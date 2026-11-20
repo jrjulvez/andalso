@@ -2,72 +2,50 @@
 
 Lo que te llega es una parte. Cuenta el resto.
 
-Web instalable en el móvil. Cada persona usa su propia clave de Anthropic: la app no tiene servidor, no guarda nada fuera del dispositivo y no te cuesta nada mantenerla.
+Web instalable en el móvil. Pegas algo que te ha llegado o preguntas por un tema; la IA busca fuentes y te devuelve el resto en fichas listas para el chat o para redes.
 
-## Publicarla (10 minutos, gratis)
+## Cómo está montada
 
-**Opción A · Netlify (la más fácil)**
-1. Descomprime el zip.
-2. Entra en https://app.netlify.com/drop (te pedirá crear una cuenta gratis).
-3. Arrastra la carpeta `andalso-app` entera a la página.
-4. Te da una dirección tipo `https://nombre-raro.netlify.app`. En «Site settings» puedes cambiarle el nombre o ponerle tu dominio.
+- **Página:** GitHub Pages, rama `main`, carpeta raíz. Sin paso de compilación.
+- **Intermediario:** un Worker de Cloudflare (`proxy/worker.js`) que guarda la clave de Anthropic y la usa en nombre de la app. Se publica solo desde GitHub Actions (`.github/workflows/worker.yml`) cada vez que cambia `proxy/`.
+- **Almacén KV `PIEZAS`:** piezas compartidas (un año), invitaciones, cupos diarios, contadores anónimos y memoria de respuestas (tres días). Lo crea la propia publicación si no existe.
 
-**Opción B · GitHub Pages**
-1. Crea un repositorio y sube el contenido de la carpeta (que `index.html` quede en la raíz).
-2. En Settings → Pages, elige la rama `main` y la carpeta raíz.
+### Variables del Worker (Cloudflare → Worker → Settings)
 
-Tiene que servirse por **https**: sin https no funcionan la instalación ni el modo sin conexión.
+| Variable | Qué es |
+| --- | --- |
+| `ANTHROPIC_API_KEY` (secreto) | La clave de Anthropic |
+| `CODIGO` (secreto) | El código maestro: gestiona invitaciones y ve estadísticas |
+| `CUPO_DIARIO` (opcional) | Consultas a la IA por invitación y día; por defecto 60 |
+| `ORIGENES` (opcional) | Webs que pueden usarlo; por defecto `https://jrjulvez.github.io` |
 
-## Lo que necesita cada persona
+La publicación necesita un secreto en GitHub: `CLOUDFLARE_API_TOKEN` (plantilla «Edit Cloudflare Workers»).
 
-1. Una cuenta en https://console.anthropic.com con algo de saldo.
-2. La **búsqueda web activada** en la configuración de su organización en la consola. Sin ella, la app avisa con un mensaje claro.
-3. Una clave de API, que se pega una sola vez en Ajustes y se queda solo en ese móvil.
+## Invitaciones
 
-Sin clave se pueden probar los dos ejemplos (BBC y cinco golpes), con respuestas preparadas y comprobadas a mano.
+- El enlace con el **código maestro** (`?c=CODIGO`) es solo para quien administra. En **Ajustes** aparecen las invitaciones y el uso.
+- Desde ahí se crea **una invitación por persona**, con su propio enlace y cupo diario. Si una se filtra, se revoca solo esa.
+- Para cortar el código maestro, cámbialo en Cloudflare.
+- El tope de gasto mensual de la consola de Anthropic es la última protección.
 
-## Modo invitación (tu clave para todos, sin que nadie pague)
+## Qué hace cada archivo
 
-La app puede usar una clave tuya escondida en un intermediario gratuito de Cloudflare. Quien abre el enlace de invitación no necesita clave ni cuenta.
+- `motor.js`: las llamadas a la IA (vista previa rápida sin búsqueda, lectura con búsqueda, revisión de calidad, preguntas) y las reglas que no se rompen: cinco veredictos, nunca inventar fuentes ni enlaces, las valoraciones son «dicho», coincidir no es causar, nada de personas privadas, neutralidad política, lo abierto no se da por cerrado. También habla con el intermediario: piezas, memoria, eventos e invitaciones.
+- `app.js`: pantallas (portada, lectura, la pieza como fichas, quien recibe el enlace, ajustes y guía de WhatsApp), piezas guardadas en el dispositivo e imágenes de 1080 × 1350 para compartir.
+- `sw.js`: caché para abrir sin conexión; siempre pide la versión nueva cuando hay red.
 
-1. **Anthropic** (una vez): en https://console.anthropic.com añade saldo, pon un **tope de gasto mensual**, activa la **búsqueda web** y crea una clave.
-2. **Cloudflare** (una vez, gratis): crea un Worker, pega el contenido de `proxy/worker.js` y despliégalo. En los ajustes del Worker añade dos secretos:
-   - `ANTHROPIC_API_KEY`: tu clave.
-   - `CODIGO`: el código de invitación.
-3. Pon la dirección del Worker en `config.js` (`proxy: 'https://….workers.dev'`).
-4. Comparte el enlace con el código: `https://jrjulvez.github.io/andalso/?c=CODIGO`. La app lo guarda en el móvil y lo quita de la barra de direcciones.
+## Recorrido
 
-El intermediario solo acepta peticiones desde la web de la app y con el código; fuerza Sonnet o Haiku, un máximo de 6 búsquedas por llamada y de 6.000 tokens de respuesta. El tope de gasto de la consola es la protección final. Para cortar el acceso a todos, cambia el `CODIGO` en Cloudflare.
+1. **Pregunta:** pegar, subir una captura, compartir desde otra app o escribir.
+2. **El resto:** mientras busca, se enseña lo que se dice; después, una pantalla de fichas que se abren para ver fuentes. Una segunda pasada revisa veredictos y frases antes de compartir. Las preguntas del caso añaden fichas nuevas.
+3. **Cuéntalo:** «para el chat» (una ficha y un texto) o «para redes» (carrusel de hasta seis). El enlace con las fuentes es opcional y corto.
 
-## Coste para el usuario
+## Medición
 
-- Leer un mensaje: hasta 6 búsquedas. Cada pregunta: hasta 6 más (2 la de «qué falta saber»).
-- La búsqueda cuesta 10 $ por cada 1.000 (1 céntimo cada una), más los tokens del modelo.
-- La propia app enseña, en cada pieza, cuántas búsquedas ha gastado.
-
-## Instalarla y compartir desde WhatsApp
-
-**Android (Chrome):** abre la dirección, menú ⋮ → «Instalar aplicación». Desde ese momento aparece en el menú de compartir de cualquier app: compartes un mensaje o un enlace y se abre and also con el texto ya pegado.
-
-**iPhone (Safari):** abre la dirección, botón compartir → «Añadir a pantalla de inicio». Para compartir desde WhatsApp hace falta un atajo:
-1. App Atajos → nuevo atajo → en sus ajustes, activa «Mostrar en la hoja de compartir» y acepta Texto y URL.
-2. Acción «Codificar URL» con la entrada del atajo.
-3. Acción «Abrir URL» con `https://TU-DIRECCION/?t=` seguido del resultado codificado.
-4. Llámalo «and also». Ya aparece al compartir un mensaje.
-
-Las capturas no pasan por el atajo: se suben desde la propia app con «Subir una captura».
-
-## Cómo funciona
-
-- `motor.js`: las tres llamadas a la API (leer, contestar una pregunta, entender una pregunta escrita) y las reglas que la IA no puede romper: cinco veredictos, nunca inventar fuentes ni enlaces, las valoraciones son «dicho», coincidir no es causar, nada de personas privadas, neutralidad política, lo abierto no se da por cerrado.
-- `app.js`: pantallas, piezas guardadas en el dispositivo, imágenes 1080×1350 para compartir y el enlace.
-- El **enlace** lleva la pieza comprimida dentro (`#p=…`). Quien lo abre ve todo lo comprobado, con fuentes, sin cuentas ni servidor. Los ejemplos no generan enlace.
-- `demo.js`: los dos casos de ejemplo.
-- Modelos por defecto: `claude-sonnet-5-5` para buscar y `claude-haiku-5-5` para entender preguntas. El modelo principal se cambia en Ajustes.
+Solo contadores por día en el Worker, sin datos de nadie: aperturas, piezas, respuestas desde memoria, preguntas, compartidas, enlaces abiertos, receptores que crean, vuelven a los 7 días y llamadas a la IA.
 
 ## Límites que conviene saber
 
-- La clave queda en el navegador del usuario. Es su clave y su gasto, pero cualquiera con acceso a ese móvil desbloqueado podría verla. Ajustes tiene un botón para borrarla.
-- Lo que se pega se envía a Anthropic para leerlo y buscar fuentes.
-- La calidad de cada pieza depende de lo que encuentre la búsqueda. La app marca «sin fuente» lo que no puede respaldar, pero conviene revisar antes de mandar.
-- Enlaces de noticias: la IA busca la noticia a partir del enlace; si está detrás de un muro de pago, puede no leerla entera.
+- Lo que se escribe se envía a Anthropic para leerlo y buscar fuentes.
+- La calidad depende de lo que encuentre la búsqueda. La revisión automática ayuda, pero conviene mirar las fuentes antes de mandar.
+- El plan gratuito de Cloudflare KV admite 1.000 escrituras al día: suficiente para una prueba con decenas de personas, no para un lanzamiento.

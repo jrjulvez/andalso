@@ -1,23 +1,21 @@
 // and also · app
 (function () {
   const M = window.MOTOR;
-  const INK = '#111111', PAPER = '#F4F4F1';
   const VERS = M.VERS;
+  const INK = '#111111', PAPER = '#F4F4F1', GRIS = '#55534E';
   const MK = { 'es así': 'es', 'a medias': 'medias', 'no es así': 'no', 'sin fuente': 'sin', 'dicho': 'dicho' };
-  const EST = { 'es así': 'solid', 'a medias': 'dotted', 'no es así': 'solid', 'sin fuente': 'dotted', 'dicho': 'dashed' };
-  const DTIT = { also: 'also', relacion: 'Cadena', antes: 'Tiempo', normal: '¿Es lo normal?', dichos: 'Dichos', ami: '¿Y a mí?', falta: 'Qué falta saber' };
-  const logoBtn = sz => `<button class="btn" data-go="inicio" aria-label="and also: volver al principio" style="border:0;padding:0;min-height:0;background:none">${logo(sz)}</button>`;
-  const GRIS = '#55534E';
-  const titDiapo = (P, k) => k === 'unica' ? 'Ficha única' : k === 'portada' ? 'Portada · en una frase' : k === 'enlace' ? 'Enlace · todo lo comprobado' : k === 'frases' ? 'Frase a frase · lo que llegó, revisado' : /^f\d+$/.test(k) ? 'Frase ' + (+k.slice(1) + 1) + ' · ' + (P.tramos[P.original.filter(x => typeof x !== 'string')[+k.slice(1)].k] || {}).ver : (DTIT[k] || 'Tu pregunta') + ' · ' + P.N[k].titulo;
-  const ORDEN = ['also', 'relacion', 'antes', 'normal', 'dichos', 'ami', 'falta'];
+  const PESO = { 'no es así': 0, 'a medias': 1, 'sin fuente': 2, 'dicho': 3, 'es así': 4 };
+  const VERBO = { 'es así': 'Es así', 'a medias': 'A medias', 'no es así': 'No es así', 'dicho': 'Es una opinión', 'sin fuente': 'Sin fuente' };
+  const MAX_FICHAS = 6;
+  const KEY_OK = k => k === 'gancho' || k === 'also' || /^f\d{1,2}$/.test(k) || /^l\d{1,2}$/.test(k);
 
+  // ---------- utilidades ----------
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const hl = t => '<span class="hl"><span class="hlb" aria-hidden="true"></span><span class="hlt">' + t + '</span></span>';
-  // cada palabra en su propia caja: así la raya no se rompe al saltar de línea (ni en pantalla ni al exportar)
+  // cada palabra en su caja: la raya no se rompe al saltar de línea (ni en pantalla ni al exportar)
   const mark = (t, ver) => {
     if (MK[ver] === 'sin') return '<span class="sin">[<span class="t">' + t + '</span>]</span>';
-    const c = MK[ver] || 'es';
-    const p = String(t).split(/(\s+)/).filter(x => x !== '');
+    const c = MK[ver] || 'es', p = String(t).split(/(\s+)/).filter(x => x !== '');
     let out = '';
     for (let i = 0; i < p.length; i++) {
       if (/^\s+$/.test(p[i])) continue;
@@ -27,143 +25,191 @@
     return out;
   };
   const logo = fs => '<span class="logo" role="img" aria-label="and also" style="font-size:' + fs + 'px">and ' + hl('also') + '</span>';
+  const logoBtn = sz => `<button class="btn" data-go="inicio" aria-label="and also: volver al principio" style="border:0;padding:0;min-height:0;background:none">${logo(sz)}</button>`;
   const resaltar = s => { let n = 0; return esc(s).replace(/\*\*([^*]+)\*\*/g, (m, x) => (++n <= 2 ? hl(x) : x)); };
   const plano = s => String(s || '').replace(/\*\*/g, '');
-  const fuente = (f, url) => (typeof url === 'string' && /^https?:\/\/[^\s"'<>]+$/.test(url)) ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(f) + '</a>' : esc(f);
+  const urlBien = u => typeof u === 'string' && /^https?:\/\/[^\s"'<>]+$/.test(u);
+  const fuente = (f, url) => urlBien(url) ? '<a href="' + esc(url) + '" target="_blank" rel="noopener noreferrer">' + esc(f) + '</a>' : esc(f) + (f && f !== 'sin fuente' ? ' <span style="opacity:.7">(sin enlace)</span>' : '');
   const fecha = () => new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' }).replace('.', '');
+  const esta = (a, k) => (a || []).indexOf(k) >= 0;
+  const sinComillas = s => String(s || '').replace(/^[«"“]+|[»"”.]+$/g, '');
+  const lee = k => { try { return localStorage.getItem(k) || ''; } catch (e) { return ''; } };
+  const guarda = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
 
   // ---------- almacenamiento local ----------
   const store = {
-    lista() { try { return JSON.parse(localStorage.getItem('aa_piezas') || '[]'); } catch (e) { return []; } },
+    lista() { try { return JSON.parse(localStorage.getItem('aa_piezas') || '[]').map(migrar).filter(Boolean); } catch (e) { return []; } },
     guardar(p) { try { const l = store.lista().filter(x => x.id !== p.id); l.unshift(p); localStorage.setItem('aa_piezas', JSON.stringify(l.slice(0, 30))); } catch (e) {} },
     borrar(id) { try { localStorage.setItem('aa_piezas', JSON.stringify(store.lista().filter(x => x.id !== id))); } catch (e) {} }
   };
 
   // ---------- estado ----------
-  let S = { paso: 'inicio', P: null, tab: 'mapa', tramo: null, hoja: null, texto: '', cargando: null, error: '', entrada: { texto: '', imagen: null }, aviso: '', exportando: false, enlace: '', vista: null };
+  let S = { paso: 'inicio', P: null, hoja: null, error: '', entrada: { texto: '', imagen: null }, previa: null, cargando: null, det: {}, verOriginal: false, pp: 0, vista: null, yo: null, admin: null };
   let ctrl = null;
   const app = document.getElementById('app');
-  const esta = (a, k) => a.indexOf(k) >= 0;
   const set = p => { Object.assign(S, p); render(); };
-  const guardaP = () => { if (S.P && !S.P.demo) store.guardar(S.P); };
+  const guardaP = () => { if (S.P) store.guardar(S.P); };
 
-  function nuevaPieza(base, demo) {
-    return Object.assign({
-      id: 'p' + Date.now().toString(36), demo: !!demo, creada: new Date().toISOString(), fecha: fecha(),
-      mapa: ['also'], fuera: [], largo: 'corta', tono: 'neutro', consumo: { entrada: 0, salida: 0, busquedas: 0 }, banco: null, alias: {}, orden: ORDEN.slice()
-    }, base);
+  // ---------- la pieza ----------
+  function nuevaPieza(L) {
+    const P = Object.assign({ v: 2, id: 'p' + Date.now().toString(36), creada: new Date().toISOString(), fecha: fecha(), N: {}, hechas: [], destino: 'chat', tono: 'neutro', conEnlace: false, consumo: { entrada: 0, salida: 0, busquedas: 0 }, revision: { estado: 'pendiente', cambios: [] } }, L);
+    P.fichas = fichasPorDefecto(P);
+    return P;
   }
-  function sumaConsumo(c) { if (!c || !S.P) return; S.P.consumo.entrada += c.entrada; S.P.consumo.salida += c.salida; S.P.consumo.busquedas += c.busquedas; }
-
-  // ---------- cálculos ----------
-  const incl = () => S.P.mapa.filter(k => !esta(S.P.fuera, k) && S.P.N[k]);
-  function cuenta(P) {
-    P = P || S.P; const c = {};
-    Object.values(P.tramos).forEach(t => { c[t.ver] = (c[t.ver] || 0) + 1; });
-    P.mapa.filter(k => !esta(P.fuera, k) && P.N[k]).forEach(k => { const v = P.N[k].ver; c[v] = (c[v] || 0) + 1; });
-    return c;
+  // piezas guardadas con la versión anterior
+  function migrar(P) {
+    if (!P || !Array.isArray(P.original) || !P.tramos || !P.portada) return null;
+    if (P.v === 2) return P;
+    const N = {};
+    Object.keys(P.N || {}).forEach(k => { if (k !== 'also' && (!P.mapa || esta(P.mapa, k)) && P.N[k] && P.N[k].items) N[/^l\d+$/.test(k) ? k : 'l' + (Object.keys(N).length + 1)] = P.N[k]; });
+    const a = P.N && P.N.also;
+    const Q = { v: 2, id: P.id || 'p' + Date.now().toString(36), creada: P.creada, fecha: P.fecha, titulo: P.titulo || 'Sin título', fuenteOriginal: P.fuenteOriginal || 'lo que te llegó', esPregunta: !!P.esPregunta, gancho: P.gancho || '', preguntas: P.preguntas || [], hechas: P.hechas || [], original: P.original, tramos: P.tramos, portada: { neutro: P.portada.neutro || '', complice: P.portada.complice || P.portada.neutro || '' }, paraChat: P.paraChat || '', also: (P.alsoSlide && P.alsoSlide.big) || a ? { big: (P.alsoSlide && P.alsoSlide.big) || (a && a.titulo) || '', ver: (a && a.ver) || 'es así', fuente: (P.alsoSlide && P.alsoSlide.fuente) || (a && a.fuente) || '', url: (a && a.items && a.items[0] && a.items[0].url) || '' } : null, N, destino: P.largo === 'corta' ? 'chat' : 'redes', tono: P.tono === 'complice' ? 'complice' : 'neutro', conEnlace: !!P.conEnlace, corto: P.corto, consumo: P.consumo || { entrada: 0, salida: 0, busquedas: 0 }, revision: { estado: 'antigua', cambios: [] } };
+    if (Q.also && !Q.also.big) Q.also = null;
+    Q.fichas = fichasPorDefecto(Q);
+    return Q;
   }
-  function garantia(html, P) {
-    P = P || S.P; const c = cuenta(P); const tot = Object.values(c).reduce((a, b) => a + b, 0);
-    return 'revisado ' + (P.fecha || fecha()) + ' · ' + tot + ' puntos: ' + VERS.filter(v => c[v]).map(v => c[v] + ' ' + (html ? mark(v, v) : v)).join(' · ');
-  }
-  const etiqueta = P => P.esPregunta ? 'lo que se da por hecho' : 'lo que te llegó · ' + esc(P.fuenteOriginal) + ', retecleado';
-  const PESO = { 'no es así': 0, 'a medias': 1, 'sin fuente': 2, 'dicho': 3, 'es así': 4 };
   const tramosOrden = P => P.original.filter(x => typeof x !== 'string' && P.tramos[x.k]).map((x, j) => ({ j, k: x.k, p: PESO[P.tramos[x.k].ver] })).sort((a, b) => a.p - b.p);
-  const ganchoDe = P => P.gancho || (() => { const t = tramosOrden(P)[0]; const seg = t && P.original.find(x => typeof x !== 'string' && x.k === t.k); return seg ? seg.t : ''; })();
+  const trs = P => P.original.filter(x => typeof x !== 'string' && P.tramos[x.k]);
+  const ganchoDe = P => sinComillas(P.gancho || (() => { const t = tramosOrden(P)[0]; const seg = t && trs(P).find(x => x.k === t.k); return seg ? seg.t : P.titulo; })());
+  function fichasPorDefecto(P) { return ['gancho'].concat(P.also ? ['also'] : [], Object.keys(P.N || {}), tramosOrden(P).slice(0, 2).map(x => 'f' + x.j)).slice(0, 5); }
+  // todas las fichas posibles, en orden de lectura
+  const candidatas = P => ['gancho'].concat(P.also ? ['also'] : [], Object.keys(P.N || {}).filter(k => P.N[k]), tramosOrden(P).map(x => 'f' + x.j));
+  const valida = (P, k) => k === 'gancho' || (k === 'also' && !!P.also) || (/^f\d+$/.test(k) && !!trs(P)[+k.slice(1)]) || (/^l\d+$/.test(k) && !!(P.N || {})[k]);
   function diapos(P) {
     P = P || S.P;
-    // una idea por ficha · corta 1 · media hasta 3 · entera hasta 5
-    const i = P.mapa.filter(k => !esta(P.fuera, k) && P.N[k]), tuyas = i.filter(k => k !== 'also'), conAlso = esta(i, 'also');
-    if (P.largo === 'corta') return ['gancho'];
-    const tr = tramosOrden(P).map(x => 'f' + x.j);
-    const base = ['gancho'].concat(conAlso ? ['also'] : []);
-    if (P.largo === 'media') return base.concat(tuyas.slice(0, 1), tr).slice(0, 3);
-    return base.concat(tuyas, tr).slice(0, 5);
+    if (P.destino === 'chat') return ['gancho'];
+    const sel = (P.fichas || []).filter(k => valida(P, k) && k !== 'gancho');
+    return ['gancho'].concat(candidatas(P).filter(k => esta(sel, k))).slice(0, MAX_FICHAS);
   }
-  const originalHTML = (P, marcas, clic) => P.original.map(s => typeof s === 'string' ? esc(s) :
-    (clic ? '<button class="tramo ' + (S.tramo === s.k ? 'sel' : '') + '" data-tramo="' + s.k + '">' + mark(esc(s.t), P.tramos[s.k].ver) + '</button>' : (marcas ? mark(esc(s.t), P.tramos[s.k].ver) : esc(s.t)))).join('');
+  const titular = P => P.portada[P.tono] || P.portada.neutro;
 
-  // ---------- ir a una pieza ----------
-  function abrirPieza(P) { set({ P, paso: 'compo', tab: 'mapa', tramo: P.inicio || Object.keys(P.tramos)[0], hoja: null, error: '', enlace: '' }); window.scrollTo(0, 0); }
-  function abrirDemo(k) {
-    const D = JSON.parse(JSON.stringify(window.DEMO[k]));
-    const banco = D.N; const P = nuevaPieza({ titulo: D.titulo, fuenteOriginal: D.fuenteOriginal, original: D.original, tramos: D.tramos, inicio: D.inicio, portada: D.portada, alsoSlide: D.alsoSlide, N: { also: banco.also }, banco, alias: D.alias || {}, orden: D.orden }, true);
-    P.fecha = '19 nov';
-    abrirPieza(P);
+  // ---------- fichas (imágenes de 1080 × 1350) ----------
+  function slideWrap(n, tot, dark, inner) {
+    const bg = dark ? INK : PAPER, fg = dark ? PAPER : INK;
+    return `<div class="slide" style="background:${bg};color:${fg};padding:72px 80px 64px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="logo" style="font-size:44px;color:${fg}">and ${hl('also')}</span><span style="font-size:26px;opacity:.7">${tot > 1 ? n + ' / ' + tot : ''}</span></div>${inner}</div>`;
+  }
+  function slideHTML(P, k, n, tot) {
+    const pie = (txt, dark) => `<div style="margin-top:auto;padding-top:22px;border-top:3px solid ${dark ? PAPER : INK};display:flex;justify-content:space-between;gap:20px;font-size:24px"><span>${txt}</span><span>${esc(P.fecha || fecha())}</span></div>`;
+    if (k === 'gancho') {
+      const g = ganchoDe(P), t = titular(P), largo = plano(t).length, nP = Object.keys(P.tramos).length + (P.also ? 1 : 0) + Object.keys(P.N || {}).length;
+      return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'te ha llegado que'}</span>
+<span style="margin-top:18px;font-size:${g.length > 80 ? 46 : 56}px;line-height:1.15;font-weight:500;color:${GRIS}">«${esc(g)}»</span>
+<span style="margin-top:auto;font-size:30px;font-weight:500">lo que hay detrás</span>
+<span style="margin-top:16px;font-size:${largo > 80 ? 92 : largo > 50 ? 112 : 132}px;line-height:.95;font-weight:700;letter-spacing:-.04em">${resaltar(t)}</span>
+<div style="height:70px"></div>${pie(nP + ' puntos comprobados con fuentes')}`);
+    }
+    if (k === 'also') {
+      const big = P.also.big;
+      return slideWrap(n, tot, true, `<span style="margin-top:110px;font-size:30px;font-weight:500">lo que también es verdad</span>
+<span style="margin-top:28px;font-size:${big.length > 90 ? 84 : big.length > 60 ? 100 : 116}px;line-height:.98;font-weight:700;letter-spacing:-.035em">${esc(big)}</span>
+<div style="height:60px"></div>${pie(esc(P.also.fuente), true)}`);
+    }
+    if (/^f\d+$/.test(k)) {
+      const seg = trs(P)[+k.slice(1)], t = P.tramos[seg.k];
+      return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'el mensaje dice'}</span>
+<span style="margin-top:18px;font-size:${seg.t.length > 90 ? 50 : 62}px;line-height:1.2;font-weight:500">${mark(esc(seg.t), t.ver)}</span>
+<span style="margin-top:auto;font-size:${VERBO[t.ver].length > 10 ? 124 : 150}px;line-height:.92;font-weight:700;letter-spacing:-.045em">${esc(VERBO[t.ver])}</span>
+<span style="margin-top:30px;font-size:${(t.porque || '').length > 110 ? 44 : 52}px;line-height:1.15;font-weight:500;letter-spacing:-.015em">${esc(t.porque)}</span>
+<div style="height:60px"></div>${pie(esc(t.fuente))}`);
+    }
+    const q = P.N[k];
+    return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:40px;line-height:1.15;font-weight:600">${esc(q.q)}</span>
+<span style="margin-top:auto;font-size:${q.titulo.length > 70 ? 88 : 104}px;line-height:.97;font-weight:700;letter-spacing:-.035em">${esc(q.titulo)}</span>
+${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length > 140 ? 38 : 44}px;line-height:1.2;font-weight:500">${esc(q.r)}</span>` : ''}
+<div style="height:60px"></div>${pie(mark(esc(q.ver), q.ver) + ' · ' + esc(q.fuente))}`);
+  }
+  const slidesHTML = (P, keys) => keys.map((k, i) => slideHTML(P, k, i + 1, keys.length));
+  function escalar() {
+    app.querySelectorAll('.slidebox').forEach(b => {
+      const w = b.classList.contains('thumb') ? 104 : b.classList.contains('fill') ? Math.min(420, b.parentElement.clientWidth) : Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
+      b.style.width = w + 'px'; b.style.height = Math.round(w * 1.25) + 'px'; b.firstChild.style.transform = 'scale(' + (w / 1080) + ')';
+    });
   }
 
-  // ---------- leer con el motor ----------
+  // ---------- leer ----------
   async function empezar() {
     const t = (S.entrada.texto || '').trim();
-    if (!t && !S.entrada.imagen) { set({ error: 'Pega lo que te han mandado o sube una captura.' }); return; }
+    if (!t && !S.entrada.imagen) { set({ error: 'Pega lo que te ha llegado, sube una captura o escribe tu pregunta.' }); return; }
     const modo = M.modo();
     if (modo === 'falta_codigo') { set({ error: 'Abre and also desde el enlace de invitación que te han pasado: lleva tu acceso dentro.' }); return; }
-    if (modo === 'sin_clave') { set({ paso: 'ajustes', aviso: 'Para leer tus propios mensajes, and also usa una clave de Anthropic. Ponla aquí y vuelve.' }); return; }
+    if (modo === 'sin_clave') { set({ paso: 'ajustes', error: 'Para empezar hace falta una invitación o una clave propia.' }); return; }
     ctrl = new AbortController();
-    set({ paso: 'leyendo', error: '', cargando: { t0: Date.now() } });
+    const entrada = { texto: t, imagen: S.entrada.imagen };
+    set({ paso: 'leyendo', error: '', previa: null, cargando: { t0: Date.now() } });
     tic();
+    // mientras busca, enseñar lo que se dice (sin datos: la vista previa no busca nada)
+    M.previa(entrada, ctrl.signal).then(p => { if (S.paso === 'leyendo') set({ previa: p }); }).catch(() => {});
     try {
-      const r = await M.leer({ texto: t, imagen: S.entrada.imagen }, ctrl.signal);
-      const P = nuevaPieza(r.datos, false); if (r.consumo) { P.consumo.entrada += r.consumo.entrada; P.consumo.salida += r.consumo.salida; P.consumo.busquedas += r.consumo.busquedas; }
-      if (r.errBusqueda) P.avisoBusqueda = true;
+      const h = entrada.imagen ? '' : await M.huella(t);
+      const mem = await M.memoria.leer(h);
+      let P;
+      if (mem && mem.lectura) {
+        P = nuevaPieza(Object.assign({}, mem.lectura, { revision: { estado: 'hecho', cambios: [], memoria: true } }));
+        P.veces = mem.veces || 2;
+        M.evento('memoria');
+      } else {
+        const r = await M.leer(entrada, ctrl.signal);
+        P = nuevaPieza(r.datos);
+        sumar(P, r.consumo);
+        if (r.errBusqueda) P.avisoBusqueda = true;
+        P.huella = h;
+        M.evento('pieza');
+      }
+      if (lee('aa_ref')) { M.evento('receptor_crea'); guarda('aa_ref', ''); }
       store.guardar(P); S.entrada = { texto: '', imagen: null };
       abrirPieza(P);
+      if (P.revision.estado === 'pendiente') revisarPieza(P);
     } catch (e) {
       if (e && e.codigo === 'cancelado') { set({ paso: 'inicio' }); return; }
       set({ paso: 'inicio', error: (e && e.mensaje) || 'Algo ha fallado. Vuelve a probar.' });
     }
   }
+  function sumar(P, c) { if (!c) return; P.consumo.entrada += c.entrada; P.consumo.salida += c.salida; P.consumo.busquedas += c.busquedas; }
+  const lecturaDe = P => ({ titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: P.esPregunta, gancho: P.gancho, preguntas: P.preguntas, original: P.original, tramos: P.tramos, portada: P.portada, paraChat: P.paraChat, also: P.also });
+  async function revisarPieza(P) {
+    P.revision = { estado: 'en_curso', cambios: [] }; if (S.P === P) render();
+    try {
+      const r = await M.revisar(P);
+      sumar(P, r.consumo);
+      P.revision = { estado: 'hecho', cambios: r.cambios };
+      M.memoria.guardar(P.huella, lecturaDe(P));
+    } catch (e) { P.revision = { estado: 'error', cambios: [] }; }
+    store.guardar(P);
+    if (S.P && S.P.id === P.id) { S.P = P; S.fichasListas = null; const y = window.scrollY; render(); window.scrollTo(0, y); }
+  }
+  function abrirPieza(P) { set({ P: migrar(P), paso: 'pieza', hoja: null, error: '', det: {}, verOriginal: false, alternativas: false, quiere: false, corto: null }); window.scrollTo(0, 0); }
   let reloj = null;
-  function tic() { clearInterval(reloj); reloj = setInterval(() => { if (S.paso === 'leyendo' || (S.hoja && S.hoja.cargando)) { const el = document.getElementById('seg'); if (el) el.textContent = Math.round((Date.now() - (S.cargando ? S.cargando.t0 : Date.now())) / 1000) + ' s'; } else clearInterval(reloj); }, 1000); }
+  function tic() {
+    clearInterval(reloj);
+    reloj = setInterval(() => {
+      if (S.paso === 'leyendo' || (S.hoja && S.hoja.cargando)) {
+        const s = Math.round((Date.now() - (S.cargando ? S.cargando.t0 : Date.now())) / 1000);
+        const el = document.getElementById('seg'); if (el) el.textContent = s + ' s';
+        const fase = document.getElementById('fase'); if (fase) fase.innerHTML = fasesHTML(s);
+      } else clearInterval(reloj);
+    }, 1000);
+  }
+  const FASES = [[0, 'Leyendo lo que te ha llegado'], [5, 'Buscando fuentes'], [20, 'Comprobando frase a frase'], [38, 'Preparando tus fichas']];
+  const fasesHTML = s => FASES.map(([t, l], i) => { const hecho = i + 1 < FASES.length && s >= FASES[i + 1][0], activo = s >= t && !hecho; return `<li style="display:flex;gap:10px;align-items:center;font-size:16px;${s < t ? 'color:var(--line)' : ''}"><span aria-hidden="true" style="width:16px">${hecho ? '✓' : activo ? '•' : ''}</span><span class="${activo ? 'think' : ''}">${l}</span></li>`; }).join('');
 
   // ---------- preguntar ----------
-  async function preguntarTipo(tipo, pregunta) {
-    const P = S.P; if (P.alias[tipo]) tipo = P.alias[tipo];
-    if (P.N[tipo] && esta(P.mapa, tipo)) { set({ hoja: { k: tipo, pregunta, nodo: P.N[tipo], ya: true } }); return; }
-    if (P.demo) {
-      const n = P.banco[tipo];
-      if (!n) { set({ hoja: { ninguna: true, pregunta, r: 'En este ejemplo no he preparado esa pregunta. Con tu clave, and also la buscaría.' } }); return; }
-      set({ hoja: { k: tipo, pregunta, nodo: n } }); return;
-    }
-    ctrl = new AbortController();
-    S.cargando = { t0: Date.now() };
-    set({ hoja: { cargando: true, pregunta, tipo } }); tic();
-    try {
-      const r = await M.responder(tipo, P, pregunta, ctrl.signal);
-      sumaConsumo(r.consumo); guardaP();
-      if (r.sinRelacion) set({ hoja: { ninguna: true, pregunta, r: r.r } });
-      else set({ hoja: { k: tipo, pregunta, nodo: r.nodo } });
-    } catch (e) {
-      if (e && e.codigo === 'cancelado') { set({ hoja: null }); return; }
-      set({ hoja: { error: (e && e.mensaje) || 'Algo ha fallado.', pregunta } });
-    }
-  }
-  async function preguntarTexto(texto) {
+  async function preguntar(texto) {
     texto = (texto || '').trim(); if (!texto) return;
     const P = S.P;
     const inp = document.getElementById('q'); if (inp) inp.value = '';
-    if (P.demo) {
-      const tipo = M.porPalabras(texto);
-      if (tipo === 'verdad') { set({ tab: 'mapa', hoja: { verdad: true, pregunta: texto } }); return; }
-      if (tipo === 'ninguna' || !P.banco[P.alias[tipo] || tipo]) { set({ hoja: { ninguna: true, pregunta: texto, r: 'En este ejemplo solo están preparadas las preguntas de los botones. Con un mensaje tuyo, and also busca la respuesta a cualquier pregunta.' } }); return; }
-      preguntarTipo(tipo, texto); return;
-    }
     ctrl = new AbortController();
     S.cargando = { t0: Date.now() };
-    set({ hoja: { cargando: true, pregunta: texto, tipo: null } }); tic();
+    set({ hoja: { cargando: true, pregunta: texto } }); tic();
     try {
-      const r = await M.responderLibre(texto, P, ctrl.signal);
-      sumaConsumo(r.consumo); guardaP();
-      if (r.tipo === 'verdad') { set({ tab: 'mapa', hoja: { verdad: true, pregunta: texto } }); return; }
-      if (r.tipo === 'ninguna') { set({ hoja: { ninguna: true, pregunta: texto, r: r.r + ' No me la invento: queda fuera de la pieza.' } }); return; }
-      // una de las fijas que aún no está: ocupa su hueco; si no, va como pregunta tuya
-      let n = 1; while (P.N['l' + n]) n++;
-      const k = 'l' + n;
+      const r = await M.responder(texto, P, ctrl.signal);
+      sumar(P, r.consumo);
       P.hechas = (P.hechas || []).concat([texto]);
-      if (r.siguientes && r.siguientes.length) P.preguntas = (P.preguntas || []).concat(r.siguientes.filter(q => (P.preguntas || []).indexOf(q) < 0));
+      if (r.ninguna) { guardaP(); set({ hoja: { ninguna: true, pregunta: texto, r: r.r } }); return; }
+      if (r.siguientes && r.siguientes.length) P.preguntas = (P.preguntas || []).concat(r.siguientes.filter(q => !esta(P.preguntas, q)));
+      M.evento('pregunta');
       guardaP();
-      set({ hoja: { k, pregunta: texto, nodo: r.nodo } });
+      let n = 1; while (P.N['l' + n]) n++;
+      set({ hoja: { k: 'l' + n, pregunta: texto, nodo: r.nodo } });
     } catch (e) {
       if (e && e.codigo === 'cancelado') { set({ hoja: null }); return; }
       set({ hoja: { error: (e && e.mensaje) || 'Algo ha fallado.', pregunta: texto } });
@@ -172,21 +218,22 @@
 
   // ---------- pantallas ----------
   function render() {
-    const f = { inicio: vInicio, ajustes: vAjustes, leyendo: vLeyendo, compo: vCompo, envio: vEnvio, vista: vVista, cargavista: vCargaVista }[S.paso] || vInicio;
+    const f = { inicio: vInicio, ajustes: vAjustes, guia: vGuia, leyendo: vLeyendo, pieza: vPieza, vista: vVista, cargavista: vCargaVista }[S.paso] || vInicio;
     app.innerHTML = f();
     bind();
-    if (S.paso === 'envio' || S.paso === 'vista' || (S.paso === 'compo' && S.tab === 'pieza')) escalar();
-    if (S.paso === 'compo' && S.tab === 'pieza' && S.P && (!fichasListas(S.P) || !enlaceListo(S.P)) && !preparando) programarPreparar();
+    escalar();
+    if (S.paso === 'pieza' && S.P && S.P.revision.estado !== 'en_curso' && (!fichasListas(S.P) || !enlaceListo(S.P)) && !preparando) programarPreparar();
   }
 
   function vInicio() {
-    const todas = store.lista().filter(p => !p.demo);
+    const todas = store.lista();
     const POR = 3, pags = Math.max(1, Math.ceil(todas.length / POR));
     S.pp = Math.min(Math.max(S.pp || 0, 0), pags - 1);
     const piezas = todas.slice(S.pp * POR, S.pp * POR + POR);
     const modo = M.modo();
     const resto = ['¿Por qué ha pasado?', '¿Desde cuándo?', '¿A quién afecta?', '¿Es lo normal?', '¿Qué también es verdad?', '¿Qué no se sabe aún?'];
-    return `<header class="top">${logoBtn(24)}<button class="btn" data-go="ajustes" style="border:0;padding:0;min-height:36px;font-size:14px;font-weight:500;text-decoration:underline;text-underline-offset:3px">Ajustes</button></header>
+    const puedePegar = !!(navigator.clipboard && navigator.clipboard.readText);
+    return `<header class="top">${logoBtn(24)}<button class="link" data-go="ajustes" style="font-weight:500">Ajustes</button></header>
 <main style="display:flex;flex-direction:column">
 <section class="pad" style="padding-top:20px;display:flex;flex-direction:column;gap:22px">
 <h1 style="margin:0;font-size:46px;line-height:.96;letter-spacing:-.04em;font-weight:700">Lo que te llega es una parte.<br>Cuenta el ${hl('resto')}.</h1>
@@ -194,19 +241,21 @@ ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
 <form id="fin" class="composer">
 <label for="tin" style="font-size:15px;font-weight:600">¿Qué quieres entender?</label>
 <textarea id="tin" rows="4" placeholder="Pega una noticia, un mensaje o un enlace… o pregunta por cualquier tema">${esc(S.entrada.texto)}</textarea>
-<div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
-<label class="link" style="cursor:pointer">${S.entrada.imagen ? 'Captura lista ✓' : '+ Subir una captura'}<input id="fimg" type="file" accept="image/*" class="sr"></label>
+<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
+${puedePegar ? '<button type="button" class="link" data-pegar>Pegar</button>' : ''}
+<label class="link" style="cursor:pointer">${S.entrada.imagen ? 'Captura lista ✓' : 'Subir una captura'}<input id="fimg" type="file" accept="image/*" class="sr"></label>
 ${S.entrada.imagen ? '<button type="button" class="link" data-quitaimg>Quitar</button>' : ''}
 </div>
 <button class="btn dark" type="submit" style="min-height:54px;font-size:17px">Cuéntame el resto</button>
 </form>
 <div style="display:flex;flex-direction:column;gap:8px"><span class="small">o empieza así</span>
 <div style="display:flex;flex-wrap:wrap;gap:8px">${['¿Por qué ', '¿Qué hay detrás de ', '¿Cómo me afecta ', 'Explícame '].map(t => `<button class="chip" data-empieza="${esc(t)}">${esc(t.trim())}…</button>`).join('')}</div></div>
-${modo === 'sin_clave' ? '<p class="small" style="margin:0">Para empezar necesitas una clave de Anthropic: la pones una vez en Ajustes y se queda solo en este móvil.</p>' : ''}${modo === 'falta_codigo' ? '<p class="small" style="margin:0">Ábrelo desde el enlace de invitación que te han pasado: lleva tu acceso dentro.</p>' : ''}
+<button class="link" data-go="guia" style="align-self:flex-start">Úsalo desde WhatsApp →</button>
+${modo === 'falta_codigo' ? '<p class="small" style="margin:0">Ábrelo desde el enlace de invitación que te han pasado: lleva tu acceso dentro.</p>' : ''}
 </section>
-${todas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:8px">
+${todas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:10px">
 <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lab">tus piezas</span><span class="small" style="font-size:12px">${todas.length}</span></div>
-<ul class="list" style="margin:0;padding:0;list-style:none">${piezas.map(p => `<li style="display:flex;justify-content:space-between;align-items:center;gap:8px"><button class="btn" data-abrir="${esc(p.id)}" style="border:0;padding:0;text-align:left;flex:1 1 auto;min-height:44px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0"><span style="font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.titulo)}</span><span class="small" style="font-weight:500;font-size:12px">${esc(p.fecha || '')}</span></button><button class="link" data-borrar="${esc(p.id)}" aria-label="Borrar ${esc(p.titulo)}" style="color:var(--grey)">Borrar</button></li>`).join('')}</ul>
+<div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">${piezas.map(p => `<div style="display:flex;flex-direction:column;gap:6px;min-width:0"><button class="btn" data-abrir="${esc(p.id)}" aria-label="Abrir ${esc(p.titulo)}" style="border:0;padding:0;min-height:0;display:flex;flex-direction:column;gap:6px;text-align:left"><div class="slidebox thumb">${slideHTML(p, 'gancho', 1, 1)}</div><span style="font-size:13px;line-height:1.2;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.titulo)}</span></button><span style="display:flex;justify-content:space-between;align-items:center"><span class="small" style="font-size:11px">${esc(p.fecha || '')}</span><button class="link" data-borrar="${esc(p.id)}" aria-label="Borrar ${esc(p.titulo)}" style="font-size:11px;color:var(--grey);padding:0">Borrar</button></span></div>`).join('')}</div>
 ${pags > 1 ? `<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn" data-pp="-1" ${S.pp === 0 ? 'disabled' : ''} aria-label="Más recientes" style="min-height:40px;min-width:48px">←</button><span class="small">${S.pp + 1} de ${pags}</span><button class="btn" data-pp="1" ${S.pp >= pags - 1 ? 'disabled' : ''} aria-label="Anteriores" style="min-height:40px;min-width:48px">→</button></div>` : ''}
 </section>` : ''}
 <section style="background:var(--ink);color:var(--paper);padding:30px 20px 32px;display:flex;flex-direction:column;gap:20px">
@@ -215,7 +264,7 @@ ${pags > 1 ? `<div style="display:flex;justify-content:space-between;align-items
 <div style="display:flex;flex-direction:column;gap:16px;border-top:2px solid #3A3936;padding-top:20px">
 <div><h3 style="margin:0 0 3px;font-size:19px">Entiéndelo</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Una noticia, un rumor o un tema: el contexto, el porqué y lo que no te cuentan.</p></div>
 <div><h3 style="margin:0 0 3px;font-size:19px">Tira del hilo</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Cada respuesta abre preguntas nuevas, pensadas para ese caso.</p></div>
-<div><h3 style="margin:0 0 3px;font-size:19px">Cuéntalo entero</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Una ficha que se entiende de un vistazo, para tu grupo o tus redes.</p></div>
+<div><h3 style="margin:0 0 3px;font-size:19px">Cuéntalo entero</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Una ficha y un texto listos para tu grupo, o un carrusel para tus redes.</p></div>
 </div>
 <p style="margin:0;font-size:13px;line-height:1.45;color:#BDBBB5">Todo con fuentes. Lo que es opinión, se dice. Lo que no se sabe, también.</p>
 </section>
@@ -223,266 +272,116 @@ ${pags > 1 ? `<div style="display:flex;justify-content:space-between;align-items
 </main>`;
   }
 
-  function vAjustes() {
-    const clave = M.ajustes.clave;
-    const mod = M.ajustes.modelo;
-    const opciones = [['claude-sonnet-5-5', 'Sonnet 5.5 · equilibrado (recomendado)'], ['claude-opus-5-5', 'Opus 5.5 · más fino, más caro'], ['claude-haiku-5-5', 'Haiku 5.5 · rápido y barato']];
+  function vGuia() {
     return `<header class="top">${logoBtn(22)}<button class="btn" data-go="inicio" style="min-height:36px;font-size:13px">Volver</button></header>
-<main class="pad" style="display:flex;flex-direction:column;gap:16px">
-<h1 style="margin:6px 0 0;font-size:30px;line-height:1.02;letter-spacing:-.025em">${M.proxy() ? 'Ajustes' : 'Tu IA, tu clave'}</h1>
-${S.aviso ? `<div class="aviso">${esc(S.aviso)}</div>` : ''}
-${M.proxy() ? `<div class="card" style="display:flex;flex-direction:column;gap:8px"><span class="lab">invitación</span><span style="font-size:16px;line-height:1.4">${M.ajustes.codigo ? 'Estás usando una invitación: no necesitas clave ni pagar nada. Pega un mensaje y listo.' : 'No tienes invitación en este móvil. Abre el enlace de invitación que te han pasado.'}</span>${M.ajustes.codigo ? '<button class="btn" type="button" data-borracodigo>Quitar la invitación de este móvil</button>' : ''}</div>
-<p class="small" style="margin:0">Si prefieres usar tu propia cuenta de Anthropic, pon tu clave abajo: tendrá prioridad sobre la invitación.</p>` : ''}
-<p style="margin:0;font-size:16px;line-height:1.45">and also no tiene servidor ni cobra nada. Usa tu cuenta de Anthropic: pagas tú lo que gastas, directamente, y nadie más ve tu clave.</p>
-<ol style="margin:0;padding-left:20px;font-size:15px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
-<li>Entra en la consola de Anthropic (<a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>) y añade algo de saldo. Con pocos euros da para muchas piezas.</li>
-<li>Activa la <strong>búsqueda web</strong> en la configuración de tu organización. Sin ella, and also no puede buscar fuentes.</li>
-<li>Crea una clave de API y pégala aquí.</li>
-</ol>
-<form id="fcl" style="display:flex;flex-direction:column;gap:10px">
-<label for="cl" class="lab">tu clave</label>
-<input id="cl" type="password" autocomplete="off" spellcheck="false" placeholder="${clave ? 'Guardada: ••••' + esc(clave.slice(-4)) : 'sk-ant-…'}">
-<label for="mo" class="lab">modelo</label>
-<select id="mo">${opciones.map(([v, l]) => `<option value="${v}" ${v === mod ? 'selected' : ''}>${l}</option>`).join('')}</select>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn dark" type="submit" style="flex:1 1 auto">Guardar</button><button class="btn" type="button" data-probar ${M.modo() === 'clave' || M.modo() === 'invitado' ? '' : 'disabled'}>${M.modo() === 'invitado' ? 'Probar la conexión' : 'Probar la clave'}</button></div>
-${clave ? '<button class="btn" type="button" data-borraclave>Borrar la clave de este móvil</button>' : ''}
-<p id="estado" class="small" aria-live="polite" style="margin:0"></p>
-</form>
-<div style="border-top:2px solid var(--ink);padding-top:12px;display:flex;flex-direction:column;gap:6px">
-<span class="lab">cuánto cuesta</span>
-<p style="margin:0;font-size:15px;line-height:1.45">Leer un mensaje hace hasta 6 búsquedas y cada pregunta, hasta 6 más. La búsqueda cuesta 10 $ por cada 1.000 (1 céntimo cada una), más el texto que lee el modelo. Una pieza completa suele quedarse en céntimos; en la pieza ves cuántas búsquedas ha gastado.</p>
-</div>
+<main class="pad" style="display:flex;flex-direction:column;gap:18px">
+<h1 style="margin:6px 0 0;font-size:30px;line-height:1.02;letter-spacing:-.025em">Úsalo desde WhatsApp</h1>
+<section class="card" style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:19px">En cualquier móvil, en dos toques</h2>
+<ol style="margin:0;padding-left:20px;font-size:15px;line-height:1.5;display:flex;flex-direction:column;gap:6px"><li>En WhatsApp, mantén pulsado el mensaje y pulsa <b>Copiar</b>.</li><li>Abre and also y pulsa <b>Pegar</b>. Listo.</li></ol></section>
+<section class="card" style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:19px">Android: directo desde Compartir</h2>
+<ol style="margin:0;padding-left:20px;font-size:15px;line-height:1.5;display:flex;flex-direction:column;gap:6px"><li>Abre and also en Chrome, menú ⋮ → <b>Instalar aplicación</b>.</li><li>Desde ese momento, al pulsar <b>Compartir</b> en un mensaje o enlace, aparece and also en la lista.</li></ol></section>
+<section class="card" style="display:flex;flex-direction:column;gap:8px"><h2 style="margin:0;font-size:19px">iPhone: un Atajo para enlaces y textos</h2>
+<p style="margin:0;font-size:14px;line-height:1.45;color:var(--grey)">Sirve desde Safari, Instagram, X o cualquier app que tenga el botón de compartir.</p>
+<ol style="margin:0;padding-left:20px;font-size:15px;line-height:1.5;display:flex;flex-direction:column;gap:6px"><li>Abre la app <b>Atajos</b> y crea uno nuevo con <b>+</b>.</li><li>En los detalles del atajo, activa <b>Mostrar en hoja de compartir</b> y elige <b>Texto</b> y <b>URL</b>.</li><li>Añade la acción <b>Codificar URL</b> con la entrada del atajo.</li><li>Añade <b>Abrir URL</b> con esta dirección seguida del resultado anterior:<br><code style="font-size:13px;word-break:break-all">https://jrjulvez.github.io/andalso/?t=</code></li><li>Llámalo <b>Cuéntame el resto</b>. Aparecerá al pulsar Compartir.</li></ol>
+<p style="margin:0;font-size:13px;line-height:1.45;color:var(--grey)">Antes, abre una vez el enlace de invitación en Safari para que la invitación quede guardada allí.</p></section>
 </main>`;
   }
 
   function vLeyendo() {
+    const s = S.cargando ? Math.round((Date.now() - S.cargando.t0) / 1000) : 0;
     return `<header class="top">${logo(22)}</header>
-<main class="pad" style="display:flex;flex-direction:column;gap:16px">
-<h1 style="margin:30px 0 0;font-size:34px;line-height:1.02;letter-spacing:-.03em"><span class="think">Leyendo y buscando fuentes</span></h1>
-<ol style="margin:0;padding-left:20px;font-size:16px;line-height:1.6"><li>Retecleo lo que te ha llegado, sin datos de personas privadas.</li><li>Lo parto en frases y busco cada una.</li><li>Busco lo que también es verdad y no te cuentan.</li></ol>
-<p class="small" style="margin:0">Suele tardar entre 20 y 60 segundos · <span id="seg">0 s</span></p>
+<main class="pad" style="display:flex;flex-direction:column;gap:22px;padding-top:28px">
+${S.previa && S.previa.gancho ? `<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:14px;font-weight:600;color:var(--grey)">Te ha llegado que</span><span style="font-size:24px;line-height:1.25;font-weight:500">«${esc(sinComillas(S.previa.gancho))}»</span></div>` : '<span style="font-size:24px;line-height:1.25;font-weight:500" class="think">Leyendo…</span>'}
+<ul id="fase" style="list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:10px">${fasesHTML(s)}</ul>
+<p class="small" style="margin:0">Suele tardar entre 20 y 60 segundos · <span id="seg">${s} s</span></p>
 <button class="btn" data-cancelar>Cancelar</button>
 </main>`;
   }
 
-  function pasosHTML() {
-    return `<nav aria-label="pasos" class="tabs">${[['mapa', '1', 'Lo que hay detrás'], ['pieza', '2', 'Tu ficha']].map(([k, n, l]) => `<button class="${S.tab === k ? 'on' : ''}" aria-current="${S.tab === k ? 'step' : 'false'}" data-tab="${k}"><span class="n">paso ${n}</span>${l}</button>`).join('')}</nav>`;
+  function detalleHTML(P, k) {
+    if (k === 'gancho') return `<div class="det"><span class="lab">${P.esPregunta ? 'lo que se suele dar por hecho' : 'lo que llegó, frase a frase'}</span>${trs(P).map(seg => { const t = P.tramos[seg.k]; return `<div class="fila"><span class="lab" style="font-size:12px">${esc(t.ver)}</span><span style="font-size:15px;line-height:1.35;font-weight:500">${mark(esc(seg.t), t.ver)}</span><span style="font-size:14px;line-height:1.35;color:var(--grey)">${esc(t.porque)} · ${fuente(t.fuente, t.url)}</span></div>`; }).join('')}</div>`;
+    if (k === 'also') return `<div class="det"><span class="lab" style="font-size:12px">${esc(P.also.ver)}</span><span style="font-size:15px;line-height:1.35">${esc(P.also.big)}</span><span style="font-size:14px;color:var(--grey)">${fuente(P.also.fuente, P.also.url)}</span></div>`;
+    if (/^f\d+$/.test(k)) { const seg = trs(P)[+k.slice(1)], t = P.tramos[seg.k]; return `<div class="det"><span class="lab" style="font-size:12px">${esc(t.ver)}</span><span style="font-size:15px;line-height:1.35;font-weight:500">${mark(esc(seg.t), t.ver)}</span><span style="font-size:14px;line-height:1.35;color:var(--grey)">${esc(t.porque)} · ${fuente(t.fuente, t.url)}</span></div>`; }
+    const n = P.N[k];
+    return `<div class="det"><span style="font-size:15px;line-height:1.4">${esc(n.r || n.titulo)}</span>${n.items.map(e => `<div class="fila"><span class="lab" style="font-size:12px">${esc(e.ver)}</span><span style="font-size:15px;line-height:1.35;font-weight:500">${esc(e.t)}</span><span style="font-size:14px;color:var(--grey)">${fuente(e.f, e.url)}</span></div>`).join('')}<button class="link" data-quitaq="${k}" style="align-self:flex-start;color:var(--grey);font-size:13px">Quitar esta pregunta</button></div>`;
   }
 
-  function vCompo() {
-    const P = S.P;
-    if (S.tab !== 'pieza') S.tab = 'mapa';
-    let body = '';
-    if (S.tab === 'mapa') {
-      const nAlso = P.N.also, alsoDentro = nAlso && esta(P.mapa, 'also') && !esta(P.fuera, 'also');
-      const tuyas = P.mapa.filter(k => k !== 'also' && P.N[k]);
-      const hechas = (P.hechas || []).map(x => x.toLowerCase());
-      const sugeridas = (P.preguntas && P.preguntas.length ? P.preguntas : P.orden.filter(k => M.PREGUNTA[k] && k !== 'also' && !(P.N[k] && esta(P.mapa, k))).map(k => M.PREGUNTA[k].replace(/^¿(.)/, (m, c) => '¿' + c.toUpperCase())))
-        .filter(q => hechas.indexOf(q.toLowerCase()) < 0).slice(0, 6);
-      const tarjeta = k => { const n = P.N[k], dentro = !esta(P.fuera, k); return `<div class="card" style="display:flex;flex-direction:column;gap:6px;${dentro ? '' : 'border-color:var(--line);color:var(--soft)'}">
-<span style="font-size:13px;font-weight:600;color:var(--grey)">${esc(n.q)}</span>
-<button class="btn" data-ver="${k}" style="border:0;padding:0;min-height:0;text-align:left;font-size:19px;line-height:1.18;font-weight:700;color:inherit">${esc(n.titulo)}</button>
-<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span style="font-size:12px;color:var(--grey)">${mark(esc(n.ver), n.ver)} · ${esc(n.fuente)}</span><button class="link" data-toggle="${k}" style="color:inherit;font-size:13px">${dentro ? 'quitar de la ficha' : 'volver a meter'}</button></div></div>`; };
-      const trs = P.original.filter(x => typeof x !== 'string');
-      body = `<div style="display:flex;flex-direction:column">
+  function vPieza() {
+    const P = S.P, chat = P.destino === 'chat', d = diapos(P), sel = d.slice(1);
+    const hechas = (P.hechas || []).map(x => x.toLowerCase());
+    const sugeridas = (P.preguntas || []).filter(q => !esta(hechas, q.toLowerCase())).slice(0, 5);
+    const rev = P.revision || {};
+    const revHTML = rev.estado === 'en_curso' ? '<span class="think">Revisando veredictos y fuentes…</span>'
+      : rev.estado === 'hecho' ? (rev.memoria ? 'Respuesta ya revisada' : rev.cambios.length ? `Revisado · ${rev.cambios.length} ${rev.cambios.length === 1 ? 'ajuste' : 'ajustes'} <button class="link" data-verajustes style="font-size:13px;padding:0">ver</button>` : 'Revisado: todo cuadra con sus fuentes')
+        : rev.estado === 'error' ? 'No se ha podido revisar: mira las fuentes antes de enviar' : '';
+    const cartas = candidatas(P).map(k => {
+      const dentro = k === 'gancho' || esta(sel, k);
+      return `<article class="fcard${!chat && !dentro ? ' fuera' : ''}"><button class="slidebtn" data-det="${k}" aria-label="Ver detalle y fuentes"><div class="slidebox fill">${slideHTML(P, k, 1, 1)}</div></button>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:40px">
+${chat ? (k === 'gancho' ? '<span style="font-size:13px;font-weight:600">Esta es la que se envía</span>' : '<span class="small" style="font-size:13px">Para que entiendas el resto</span>') : (k === 'gancho' ? '<span style="font-size:13px;font-weight:600">Portada · siempre va</span>' : `<button class="incl${dentro ? ' on' : ''}" data-incluir="${k}" aria-pressed="${dentro}">${dentro ? '✓ En el carrusel' : '+ Añadir al carrusel'}</button>`)}
+<button class="link" data-det="${k}" style="font-size:13px">${S.det[k] ? 'Ocultar fuentes' : 'Fuentes y detalle'}</button></div>
+${S.det[k] ? detalleHTML(P, k) : ''}</article>`;
+    }).join('');
+    const body = `<div style="display:flex;flex-direction:column">
 ${P.avisoBusqueda ? '<div class="pad" style="padding-bottom:0"><div class="err">Alguna búsqueda falló mientras leía. Revisa las fuentes antes de mandar nada.</div></div>' : ''}
-<section class="pad" style="display:flex;flex-direction:column;gap:8px;padding-bottom:20px">
-<span style="font-size:14px;font-weight:600;color:var(--grey)">${P.esPregunta ? 'Se dice que' : 'Te ha llegado que'}</span>
-<span style="font-size:21px;line-height:1.3;font-weight:500">«${esc(ganchoDe(P).replace(/^[«"]|[»".]+$/g, ''))}»</span>
-${S.verOriginal ? `<p style="margin:4px 0 0;font-size:15px;line-height:1.6;color:var(--grey)">${originalHTML(P, false, false)}</p>` : ''}
-<button class="link" data-veroriginal style="align-self:flex-start;color:var(--grey);font-weight:500">${S.verOriginal ? 'Ocultar el mensaje entero' : 'Ver el mensaje entero'}</button>
+<section class="pad" style="display:flex;flex-direction:column;gap:8px;padding-bottom:14px">
+${S.verOriginal ? `<p style="margin:4px 0 0;font-size:15px;line-height:1.6;color:var(--grey)">${esc(P.original.map(s => typeof s === 'string' ? s : s.t).join(''))}</p>` : ''}
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center"><button class="link" data-veroriginal style="color:var(--grey);font-weight:500">${S.verOriginal ? 'Ocultar el texto' : 'Ver el texto entero'}</button>${P.veces > 1 ? `<span class="small">${P.veces} personas han preguntado esto</span>` : ''}</div>
+${revHTML ? `<span class="small" style="line-height:1.4">${revHTML}</span>` : ''}
+${S.verAjustes && rev.cambios && rev.cambios.length ? `<ul class="small" style="margin:0;padding-left:18px;line-height:1.45">${rev.cambios.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
 </section>
-<section style="background:var(--ink);color:var(--paper);padding:22px 20px 24px;display:flex;flex-direction:column;gap:8px">
-<span style="font-size:14px;font-weight:600;color:#BDBBB5">Lo que hay detrás</span>
-<span style="font-size:30px;line-height:1.04;font-weight:700;letter-spacing:-.025em">${resaltar(P.portada[P.tono] || P.portada.neutro)}</span>
+<section class="pad" style="display:flex;flex-direction:column;gap:12px;padding-top:0;padding-bottom:16px">
+<div class="seg" role="radiogroup" aria-label="para dónde">${[['chat', 'Para el chat', '1 ficha + texto'], ['redes', 'Para redes', 'carrusel de ' + (chat ? Math.min(MAX_FICHAS, 1 + (P.fichas || []).filter(k => k !== 'gancho' && valida(P, k)).length) : d.length)]].map(([k, l, s]) => `<button class="btn ${P.destino === k ? 'on' : ''}" role="radio" aria-checked="${P.destino === k}" data-destino="${k}" style="min-height:52px;display:flex;flex-direction:column;justify-content:center;gap:1px"><span>${l}</span><span style="font-size:11px;font-weight:500">${s}</span></button>`).join('')}</div>
+<div class="seg" role="radiogroup" aria-label="tono">${[['neutro', 'Te lo explico'], ['complice', 'Yo también lo pensé']].map(([k, l]) => `<button class="btn ${P.tono === k ? 'on' : ''}" role="radio" aria-checked="${P.tono === k}" data-tono="${k}">${l}</button>`).join('')}</div>
 </section>
-${nAlso ? `<section class="pad" style="display:flex;flex-direction:column;gap:8px;padding-bottom:6px">
-<span style="font-size:14px;font-weight:600;color:var(--grey)">Lo que también es verdad</span>
-<div style="display:flex;flex-direction:column;gap:6px;${alsoDentro ? '' : 'color:var(--soft)'}"><button class="btn" data-ver="also" style="border:0;padding:0;min-height:0;text-align:left;font-size:22px;line-height:1.15;font-weight:700;color:inherit">${esc(P.alsoSlide.big || nAlso.titulo)}</button>
-<div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span style="font-size:12px;color:var(--grey)">${esc(nAlso.fuente)}</span><button class="link" data-toggle="also" style="color:inherit;font-size:13px">${alsoDentro ? 'quitar de la ficha' : 'volver a meter'}</button></div></div>
-</section>` : ''}
-<section class="pad" style="display:flex;flex-direction:column;gap:0;padding-bottom:6px">
-<span style="font-size:14px;font-weight:600;color:var(--grey);margin-bottom:8px">Frase a frase</span>
-${trs.map(seg => { const t = P.tramos[seg.k]; return `<div style="border-top:2px solid var(--ink);padding:12px 0;display:flex;flex-direction:column;gap:4px">
-<span style="font-size:13px;font-weight:700;letter-spacing:.02em;text-transform:uppercase">${esc(t.ver)}</span>
-<span style="font-size:16px;line-height:1.35;font-weight:500">${mark(esc(seg.t), t.ver)}</span>
-<span style="font-size:15px;line-height:1.35;color:var(--grey)">${esc(t.porque)} <span style="font-size:12px">· ${fuente(t.fuente, t.url)}</span></span></div>`; }).join('')}
-<div style="border-top:2px solid var(--ink)"></div>
-</section>
-<section class="pad" style="display:flex;flex-direction:column;gap:10px">
+<section class="pad" style="display:flex;flex-direction:column;gap:22px;padding-top:0">${cartas}</section>
+<section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:6px">
 <span style="font-size:14px;font-weight:600;color:var(--grey)">Sigue preguntando</span>
-${tuyas.map(tarjeta).join('')}
-${sugeridas.length ? `<div style="display:flex;flex-direction:column;gap:8px">${sugeridas.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}</div>` : ''}
-<form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="O escribe la tuya" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
+${sugeridas.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}
+<form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="${sugeridas.length ? 'O escribe la tuya' : 'Escribe tu pregunta'}" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
+<span class="small">Cada respuesta se convierte en una ficha.</span>
 </section>
-</div>`;
-    } else {
-      const d = diapos();
-      const c = P.consumo;
-      const nLargo = k => diapos(Object.assign({}, P, { largo: k })).length;
-      const LARGOS = [['corta', 'Corta', 'Una sola ficha con todo lo esencial.'], ['media', 'Media', 'Portada, lo que también es verdad y frase a frase.'], ['entera', 'Entera', 'Añade tus preguntas o las frases clave en su propia ficha.']];
-      const TONOS = [['neutro', 'Neutro'], ['complice', 'Cómplice'], ['seco', 'Seco']];
-      body = `<div style="display:flex;flex-direction:column;gap:22px;padding:18px 0 24px">
-<section style="display:flex;flex-direction:column;gap:10px">
-<div style="padding:0 20px;display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h2 style="margin:0;font-size:22px;letter-spacing:-.02em">Así la verá tu grupo</h2><span class="small" aria-live="polite"><b style="color:var(--ink)">${d.length} ${d.length === 1 ? 'ficha' : 'fichas'}</b>${d.length > 1 ? ' · desliza' : ''}</span></div>
-<div class="slides" id="slides">${slidesHTML(P).map(x => `<div class="slidebox">${x}</div>`).join('')}</div>
-</section>
-<section class="pad" style="padding-top:0;padding-bottom:0;display:flex;flex-direction:column" role="radiogroup" aria-label="largo">
-<span class="lab" style="margin-bottom:8px">largo</span>
-${LARGOS.map(([k, l, txt]) => `<button class="opt ${P.largo === k ? 'on' : ''}" role="radio" aria-checked="${P.largo === k}" data-largo="${k}"><span class="dot" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:700">${l}</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${txt}</span></span><span style="font-size:13px;font-weight:600;white-space:nowrap">${nLargo(k)} ${nLargo(k) === 1 ? 'ficha' : 'fichas'}</span></button>`).join('')}
-${P.largo === 'entera' && !P.mapa.some(k => k !== 'also' && P.N[k] && !esta(P.fuera, k)) ? '<button class="btn" data-tab="mapa" style="border:0;padding:8px 0 0;min-height:0;text-align:left;font-size:13px;font-weight:500;text-decoration:underline;text-underline-offset:3px">Añade preguntas en «Detrás» y entrarán aquí.</button>' : ''}
-</section>
-<section class="pad" style="padding-top:0;padding-bottom:0;display:flex;flex-direction:column" role="radiogroup" aria-label="tono">
-<span class="lab" style="margin-bottom:8px">tono de la portada</span>
-${TONOS.map(([k, l]) => `<button class="opt ${P.tono === k ? 'on' : ''}" role="radio" aria-checked="${P.tono === k}" data-tono="${k}"><span class="dot" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;font-weight:600;color:var(--grey)">${l}</span><span style="font-size:16px;line-height:1.25;font-weight:600">${esc(plano(P.portada[k]))}</span></span><span></span></button>`).join('')}
-</section>
-<div class="pad" style="padding-top:0;padding-bottom:0;display:flex;flex-direction:column;gap:8px">
+<section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:6px">
+<label for="chat" style="font-size:14px;font-weight:600;color:var(--grey)">${chat ? 'Texto para el chat' : 'Texto para acompañar'}</label>
+<textarea id="chat" rows="3" style="min-height:84px;font-size:16px">${esc(P.paraChat || plano(titular(P)))}</textarea>
+<button class="opt ${P.conEnlace ? 'on' : ''}" role="switch" aria-checked="${!!P.conEnlace}" data-conenlace><span class="sw" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">Añadir un enlace con las fuentes</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${P.conEnlace ? 'Quien lo abra verá todas las fichas y las fuentes.' : 'Desactivado: solo se comparten la ficha y el texto.'}</span></span><span></span></button>
+${P.conEnlace ? `<div style="display:flex;gap:8px;align-items:center;min-height:40px">${S.corto && S.corto.error ? `<span class="small" style="color:var(--ink)">${esc(S.corto.error)}</span>` : enlaceListo(P) && P.corto ? `<span style="flex:1 1 auto;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(P.corto.url.replace(/^https:\/\//, ''))}</span><button class="btn" data-copiar style="min-height:40px;font-size:14px">Copiar</button>` : '<span class="small think">Creando el enlace…</span>'}</div>` : ''}
 ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
 ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fichas.files)) ? alternativasHTML(P) : ''}
-${P.demo ? '' : `<button class="opt ${P.conEnlace ? 'on' : ''}" role="switch" aria-checked="${!!P.conEnlace}" data-conenlace style="margin-top:0"><span class="sw" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:700">Añadir un enlace con las fuentes</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${P.conEnlace ? 'Irá un enlace corto debajo de las fichas.' : 'Desactivado: solo se comparten las fichas.'}</span></span><span></span></button>
-${P.conEnlace ? `<div style="display:flex;gap:8px;align-items:center;min-height:44px">${S.corto && S.corto.error ? `<span class="small" style="color:var(--ink)">${esc(S.corto.error)}</span>` : enlaceListo(P) && P.corto ? `<span style="flex:1 1 auto;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(P.corto.url.replace(/^https:\/\//, ''))}</span><button class="btn" data-copiar style="min-height:40px;font-size:14px">Copiar</button>` : '<span class="small think">Creando el enlace…</span>'}</div>` : ''}`}
-${P.demo ? '<p class="small" style="margin:0">Ejemplo con respuestas preparadas y comprobadas a mano.</p>' : M.modo() === 'invitado' ? `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} de fuentes.</p>` : `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} (${(c.busquedas / 100).toFixed(2).replace('.', ',')} $) y ha procesado unos ${Math.round(c.entrada / 1000)}.000 tokens.</p>`}
-</div>
+</section>
 </div>`;
-    
-    }
-    const bar = S.tab === 'pieza' ?
-      `<div class="bar" style="flex-direction:row">${(() => { const listo = fichasListas(P) && enlaceListo(P), n = diapos().length, que = (n === 1 ? 'la ficha' : 'las ' + n + ' fichas') + (P.conEnlace && !P.demo && !(S.corto && S.corto.error) ? ' y el enlace' : '');
-        return listo ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px">${S.quiere ? 'Listo: compartir ' : 'Compartir '}${que}</button>` : `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Preparando ${que}…</span></button>`; })()}</div>` :
-      `<div class="bar" style="flex-direction:row"><button class="btn dark" data-tab="pieza" style="flex:1 1 auto;min-height:52px;font-size:16px">Siguiente: tu ficha →</button></div>`;
+    const n = d.length, que = (chat ? 'la ficha y el texto' : 'las ' + n + ' fichas') + (P.conEnlace && !(S.corto && S.corto.error) ? (chat ? ' con enlace' : ' y el enlace') : '');
+    const bar = `<div class="bar" style="flex-direction:row">${rev.estado === 'en_curso' ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Revisando antes de compartir…</span></button>` : fichasListas(P) && enlaceListo(P) ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px">${S.quiere ? 'Listo: compartir ' : 'Compartir '}${que}</button>` : `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Preparando ${chat ? 'la ficha' : 'las fichas'}…</span></button>`}</div>`;
     return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0">${logoBtn(22)}<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div></header>
-${pasosHTML()}<main>${body}</main>${bar}${hojaHTML()}`;
+<main style="border-top:2px solid var(--ink)">${body}</main>${bar}${hojaHTML()}`;
   }
 
   function hojaHTML() {
     const h = S.hoja; if (!h) return '';
     let inner = '';
-    if (h.tramo) {
-      const P = S.P, seg = P.original.find(x => typeof x !== 'string' && x.k === h.tramo), t = P.tramos[h.tramo];
-      return `<div class="sheetbg" data-close-bg><div class="sheet" role="dialog" aria-modal="true" aria-label="por qué"><div class="grab" aria-hidden="true"></div>
-<span style="font-size:19px;font-weight:600;line-height:1.35">${mark(esc(seg ? seg.t : ''), t.ver)}</span>
-<span class="lab">${esc(t.ver)}</span><span style="font-size:17px;line-height:1.4">${esc(t.porque)}</span><span class="small">${fuente(t.fuente, t.url)}</span>
-<button class="btn dark" data-close>Vale</button></div></div>`;
-    }
-    if (h.cargando) {
-      inner = `<span class="lab">and also${h.tipo ? ' · ' + esc(M.PREGUNTA[h.tipo]) : ''}</span><span style="font-size:17px" class="think">${h.tipo ? 'Buscando fuentes…' : 'Entendiendo tu pregunta…'}</span><span class="small"><span id="seg">0 s</span></span>
-<button class="btn" data-cancelar>Cancelar</button>`;
-    } else if (h.error) {
-      inner = `<div class="err" role="alert">${esc(h.error)}</div><button class="btn dark" data-close>Vale</button>`;
-    } else if (h.ninguna) {
-      inner = `<span class="lab">and also</span><span style="font-size:16px;line-height:1.4">${esc(h.r)}</span><button class="btn dark" data-close>Vale</button>`;
-    } else if (h.verdad) {
-      inner = `<span class="lab">and also · frase a frase</span><span style="font-size:16px;line-height:1.4">Cada frase de lo que te llegó ya lleva su marca: arriba del todo. Toca cualquiera para ver por qué y con qué fuente.</span><button class="btn dark" data-close>Verlo</button>`;
-    } else {
+    if (h.cargando) inner = `<span style="font-size:17px" class="think">Buscando fuentes…</span><span class="small"><span id="seg">0 s</span></span><button class="btn" data-cancelar>Cancelar</button>`;
+    else if (h.error) inner = `<div class="err" role="alert">${esc(h.error)}</div><button class="btn dark" data-close>Vale</button>`;
+    else if (h.ninguna) inner = `<span style="font-size:16px;line-height:1.4">${esc(h.r)}</span><span class="small">No me la invento: queda fuera de la pieza.</span><button class="btn dark" data-close>Vale</button>`;
+    else {
       const n = h.nodo;
       inner = `<span style="font-size:22px;line-height:1.15;font-weight:700;letter-spacing:-.015em">${esc(n.titulo)}</span>${n.r && n.r !== n.titulo ? `<span style="font-size:16px;line-height:1.4">${esc(n.r)}</span>` : ''}
-<div class="list">${n.items.map(e => `<div class="row" style="grid-template-columns:22px minmax(0,1fr);column-gap:8px"><div class="spine" aria-hidden="true"><i style="border-left-style:${EST[e.ver]}"></i></div><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">${esc(e.t)}</span><span style="font-size:12px;color:var(--grey)">${esc(e.ver)} · ${fuente(e.f, e.url)}</span></div></div>`).join('')}</div>
-<div style="display:flex;gap:10px">${h.ya ? `<button class="btn dark" data-close style="flex:1 1 auto">Cerrar</button>` : `<button class="btn dark" data-accept style="flex:1 1 auto">Añadir a mi ficha</button><button class="btn" data-close>Ahora no</button>`}</div>`;
+<div class="list">${n.items.map(e => `<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">${esc(e.t)}</span><span style="font-size:12px;color:var(--grey)">${esc(e.ver)} · ${fuente(e.f, e.url)}</span></div>`).join('')}</div>
+<div style="display:flex;gap:10px"><button class="btn dark" data-accept style="flex:1 1 auto">Añadir como ficha</button><button class="btn" data-close>Ahora no</button></div>`;
     }
-    return `<div class="sheetbg" data-close-bg><div class="sheet" role="dialog" aria-modal="true" aria-label="respuesta de and also"><div class="grab" aria-hidden="true"></div>
+    return `<div class="sheetbg" data-close-bg><div class="sheet" role="dialog" aria-modal="true" aria-label="respuesta"><div class="grab" aria-hidden="true"></div>
 <span class="small">has preguntado</span><span style="font-size:18px;font-weight:600;line-height:1.25">«${esc(h.pregunta)}»</span>${inner}</div></div>`;
   }
 
-  // ---------- diapositivas ----------
-  function slideWrap(n, tot, dark, inner, P) {
-    const bg = dark ? INK : PAPER, fg = dark ? PAPER : INK;
-    return `<div class="slide" style="background:${bg};color:${fg};padding:72px 80px 64px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="logo" style="font-size:44px;color:${fg}">and ${hl('also')}</span><span style="font-size:26px;opacity:.7">${tot > 1 ? n + ' / ' + tot : ''}</span></div>${inner}</div>`;
-  }
-  const VERBO = { 'es así': 'Es así', 'a medias': 'A medias', 'no es así': 'No es así', 'dicho': 'Es una opinión', 'sin fuente': 'Sin fuente' };
-  function slidesHTML(P) {
-    const d = diapos(P), tot = d.length;
-    const pie = (txt, dark) => `<div style="margin-top:auto;padding-top:22px;border-top:3px solid ${dark ? PAPER : INK};display:flex;justify-content:space-between;gap:20px;font-size:24px"><span>${txt}</span><span>${esc(P.fecha || fecha())}</span></div>`;
-    const nPuntos = Object.keys(P.tramos).length + P.mapa.filter(k => !esta(P.fuera, k) && P.N[k]).length;
-    return d.map((k, idx) => {
-      const n = idx + 1;
-      if (k === 'gancho') {
-        const g = ganchoDe(P), titular = P.portada[P.tono] || P.portada.neutro, largo = plano(titular).length;
-        return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'te ha llegado que'}</span>
-<span style="margin-top:18px;font-size:${g.length > 80 ? 46 : 56}px;line-height:1.15;font-weight:500;color:${GRIS}">«${esc(g.replace(/^[«"]|[»".]+$/g, ''))}»</span>
-<span style="margin-top:auto;font-size:30px;font-weight:500">lo que hay detrás</span>
-<span style="margin-top:16px;font-size:${largo > 80 ? 92 : largo > 50 ? 112 : 132}px;line-height:.95;font-weight:700;letter-spacing:-.04em">${resaltar(titular)}</span>
-<div style="height:70px"></div>${pie(nPuntos + ' puntos comprobados con fuentes')}`, P);
-      }
-      if (k === 'also') {
-        const big = P.alsoSlide.big || (P.N.also && P.N.also.titulo) || '';
-        return slideWrap(n, tot, true, `<span style="margin-top:110px;font-size:30px;font-weight:500">lo que también es verdad</span>
-<span style="margin-top:28px;font-size:${big.length > 90 ? 84 : big.length > 60 ? 100 : 116}px;line-height:.98;font-weight:700;letter-spacing:-.035em">${esc(big)}</span>
-<div style="height:60px"></div>${pie(esc(P.alsoSlide.fuente || (P.N.also && P.N.also.fuente) || ''), true)}`, P);
-      }
-      if (/^f\d+$/.test(k)) {
-        const trs = P.original.filter(x => typeof x !== 'string'), seg = trs[+k.slice(1)], t = P.tramos[seg.k];
-        return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">el mensaje dice</span>
-<span style="margin-top:18px;font-size:${seg.t.length > 90 ? 50 : 62}px;line-height:1.2;font-weight:500">${mark(esc(seg.t), t.ver)}</span>
-<span style="margin-top:auto;font-size:${VERBO[t.ver].length > 10 ? 124 : 150}px;line-height:.92;font-weight:700;letter-spacing:-.045em">${esc(VERBO[t.ver])}</span>
-<span style="margin-top:30px;font-size:${(t.porque || '').length > 110 ? 44 : 52}px;line-height:1.15;font-weight:500;letter-spacing:-.015em">${esc(t.porque)}</span>
-<div style="height:60px"></div>${pie(esc(t.fuente || ''))}`, P);
-      }
-      const q = P.N[k];
-      return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:40px;line-height:1.15;font-weight:600">${esc(q.q)}</span>
-<span style="margin-top:auto;font-size:${q.titulo.length > 70 ? 88 : 104}px;line-height:.97;font-weight:700;letter-spacing:-.035em">${esc(q.titulo)}</span>
-${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length > 140 ? 38 : 44}px;line-height:1.2;font-weight:500">${esc(q.r)}</span>` : ''}
-<div style="height:60px"></div>${pie(mark(esc(q.ver), q.ver) + ' · ' + esc(q.fuente))}`, P);
-    });
-  }
-  function escalar() {
-    const box = document.getElementById('slides'); if (!box) return;
-    const w = S.paso === 'compo' ? Math.min(260, Math.round((app.clientWidth || 360) * 0.64)) : Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
-    box.querySelectorAll('.slidebox').forEach(b => { b.style.width = w + 'px'; b.style.height = Math.round(w * 1.25) + 'px'; b.firstChild.style.transform = 'scale(' + (w / 1080) + ')'; });
-  }
-
-  // ---------- enlace sin servidor ----------
-  function piezaMin(P) {
-    const N = {}; P.mapa.filter(k => P.N[k] && !esta(P.fuera, k)).forEach(k => { N[k] = P.N[k]; });
-    return { v: 1, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, original: P.original, esPregunta: !!P.esPregunta, gancho: P.gancho || '', tramos: P.tramos, portada: P.portada, alsoSlide: P.alsoSlide, N, mapa: Object.keys(N), fuera: [], largo: P.largo, tono: P.tono, fecha: P.fecha, orden: P.orden };
-  }
-  function enlaceDe(P) {
-    const z = window.LZString.compressToEncodedURIComponent(JSON.stringify(piezaMin(P)));
-    return location.origin + location.pathname + '#p=' + z;
-  }
-  function leerEnlace() {
-    const m = location.hash.match(/^#p=(.+)$/); if (!m) return null;
-    try { return validarPieza(JSON.parse(window.LZString.decompressFromEncodedURIComponent(m[1]))); } catch (e) { return null; }
-  }
-  async function cargarCorto() {
-    const m = location.hash.match(/^#v=([A-Za-z0-9]{6,16})$/); if (!m) return false;
-    set({ paso: 'cargavista' });
-    try { const P = validarPieza(await M.leerPieza(m[1])); if (!P) throw 0; set({ paso: 'vista', vista: P }); }
-    catch (e) { set({ paso: 'cargavista', errorVista: e && e.tipo === 'no_existe' ? 'Esta pieza no existe o ha caducado.' : 'No he podido abrir esta pieza. Prueba en un rato.' }); }
-    return true;
-  }
-  function validarPieza(P) {
-    try {
-      if (!P || !Array.isArray(P.original) || !P.tramos || !P.portada || !P.N) return null;
-      // descartar tramos sin datos y valores raros
-      P.original = P.original.filter(s => typeof s === 'string' || (s && typeof s.t === 'string' && P.tramos[s.k]));
-      Object.values(P.tramos).forEach(t => { if (VERS.indexOf(t.ver) < 0) t.ver = 'sin fuente'; });
-      P.mapa = (P.mapa || []).filter(k => (ORDEN.indexOf(k) >= 0 || /^l\d{1,2}$/.test(k)) && P.N[k] && Array.isArray(P.N[k].items));
-      P.fuera = []; P.largo = ['corta', 'media', 'entera'].indexOf(P.largo) >= 0 ? P.largo : 'corta';
-      P.tono = ['neutro', 'complice', 'seco'].indexOf(P.tono) >= 0 ? P.tono : 'neutro';
-      P.alsoSlide = P.alsoSlide || { big: '', sub: '', fuente: '' };
-      return P;
-    } catch (e) {}
-    return null;
-  }
-
-  function vEnvio() {
-    const P = S.P;
-    const puedeCompartir = !!(navigator.canShare && navigator.share);
-    return `<header class="top">${logoBtn(22)}<button class="btn" data-volver style="min-height:36px;font-size:13px">Volver a editar</button></header>
-<main style="display:flex;flex-direction:column;gap:12px;padding-top:6px">
-<div class="pad" style="padding-bottom:0;display:flex;flex-direction:column;gap:8px"><span class="lab">así lo verá tu grupo</span><h2 style="margin:0;font-size:26px;line-height:1.05;letter-spacing:-.02em">${diapos().length} imágenes y un enlace. Desliza para verlas.</h2></div>
-<div class="slides" id="slides">${slidesHTML(P).map(s => `<div class="slidebox">${s}</div>`).join('')}</div>
-<div class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:10px">
-${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
-<button class="btn dark" data-compartir ${S.exportando ? 'disabled' : ''} style="min-height:52px;font-size:16px">${S.exportando ? '<span class="think">Preparando las imágenes…</span>' : (puedeCompartir ? 'Compartir imágenes y enlace' : 'Descargar las imágenes')}</button>
-<button class="btn" data-copiar style="min-height:48px">Copiar el enlace</button>
-${S.enlace ? `<p class="small" style="margin:0;word-break:break-all">${esc(S.enlace.slice(0, 90))}…</p>` : ''}
-<p class="small" style="margin:0;line-height:1.45">El enlace lleva la pieza dentro: quien lo abra ve todo lo comprobado, con sus fuentes, sin cuentas ni servidores.</p>
-</div></main>`;
-  }
-
-  // enlace corto: la pieza se guarda en el intermediario y el enlace lleva solo su código
+  // ---------- compartir: fichas y enlace preparados de antemano ----------
+  // El móvil solo deja abrir «compartir» justo después del toque: todo se prepara antes.
   const firma = o => { const t = JSON.stringify(o); let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return t.length + ':' + h; };
+  function piezaMin(P) {
+    const N = {}; Object.keys(P.N || {}).forEach(k => { N[k] = P.N[k]; });
+    return { v: 2, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: !!P.esPregunta, gancho: P.gancho || '', original: P.original, tramos: P.tramos, portada: P.portada, also: P.also, N, fichas: P.fichas, destino: P.destino, tono: P.tono, fecha: P.fecha };
+  }
+  const firmaFichas = P => firma({ d: diapos(P), m: piezaMin(P) });
+  const enlaceListo = P => !P.conEnlace || (S.corto && S.corto.error) || (P.corto && P.corto.firma === firma(piezaMin(P)));
+  const fichasListas = P => !!(S.fichas && S.fichas.firma === firmaFichas(P));
   async function enlaceCorto() {
     const P = S.P, min = piezaMin(P), f = firma(min);
     if (P.corto && P.corto.firma === f) return P.corto.url;
@@ -490,21 +389,9 @@ ${S.enlace ? `<p class="small" style="margin:0;word-break:break-all">${esc(S.enl
     P.corto = { firma: f, url: location.origin + location.pathname + '#v=' + id }; guardaP();
     return P.corto.url;
   }
-  async function prepararCorto() {
-    S.corto = { cargando: true }; render();
-    try { const url = await enlaceCorto(); S.corto = { url }; } catch (e) { S.corto = { error: (e && e.mensaje) || 'No he podido crear el enlace.' }; }
-    if (S.paso === 'compo') render();
-  }
-
-  // ---------- fichas preparadas de antemano ----------
-  // El móvil solo deja abrir «compartir» justo después del toque, así que las imágenes
-  // y el enlace se preparan antes y el botón comparte al instante.
-  const firmaFichas = P => firma({ d: diapos(P), m: piezaMin(P) });
-  const enlaceListo = P => !P.conEnlace || P.demo || (S.corto && S.corto.error) || (P.corto && P.corto.firma === firma(piezaMin(P)));
-  const fichasListas = P => !!(S.fichas && S.fichas.firma === firmaFichas(P));
   async function generarFichas(P) {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
-    const cont = document.getElementById('export'); cont.innerHTML = slidesHTML(P).join('');
+    const cont = document.getElementById('export'); cont.innerHTML = slidesHTML(P, diapos(P)).join('');
     const files = [], nodos = Array.from(cont.children);
     for (let i = 0; i < nodos.length; i++) {
       const canvas = await window.html2canvas(nodos[i], { scale: 1, width: 1080, height: 1350, backgroundColor: null, logging: false });
@@ -518,168 +405,255 @@ ${S.enlace ? `<p class="small" style="margin:0;word-break:break-all">${esc(S.enl
   function programarPreparar() { clearTimeout(prepTimer); prepTimer = setTimeout(preparar, 250); }
   async function preparar() {
     if (preparando) { otraVez = true; return; }
-    const P = S.P; if (!P || S.paso !== 'compo' || S.tab !== 'pieza') return;
+    const P = S.P; if (!P || S.paso !== 'pieza' || P.revision.estado === 'en_curso') return;
     preparando = true; otraVez = false;
     try {
-      const f = firmaFichas(P);
       if (!fichasListas(P)) {
-        const files = await generarFichas(P);
+        const f = firmaFichas(P), files = await generarFichas(P);
         if (S.fichas && S.fichas.urls) S.fichas.urls.forEach(u => URL.revokeObjectURL(u));
         S.fichas = { firma: f, files, urls: files.map(x => URL.createObjectURL(x)) };
       }
-      if (P.conEnlace && !P.demo && !enlaceListo(P)) {
+      if (P.conEnlace && !enlaceListo(P)) {
         try { const url = await enlaceCorto(); S.corto = { url }; } catch (e) { S.corto = { error: (e && e.mensaje) || 'No he podido crear el enlace.' }; }
       }
     } catch (e) { S.error = 'No he podido preparar las imágenes en este navegador.'; }
     preparando = false;
-    if (otraVez || (S.P && S.fichas && S.fichas.firma !== firmaFichas(S.P))) { programarPreparar(); }
-    if (S.paso === 'compo' && S.tab === 'pieza') { const y = window.scrollY; render(); window.scrollTo(0, y); }
+    if (otraVez || (S.P && S.fichas && S.fichas.firma !== firmaFichas(S.P))) programarPreparar();
+    if (S.paso === 'pieza') { const y = window.scrollY; render(); window.scrollTo(0, y); }
   }
   const puedeCompartirFicheros = files => !!(navigator.canShare && navigator.share && files && navigator.canShare({ files }));
-
-  function exportar() {
+  function textoCompartir(P) {
+    const url = P.conEnlace && P.corto && P.corto.firma === firma(piezaMin(P)) ? P.corto.url : '';
+    const t = P.destino === 'chat' ? (P.paraChat || plano(titular(P))) : '';
+    return [t, url].filter(Boolean).join('\n');
+  }
+  function compartir() {
     // sin esperas antes de navigator.share: tiene que ir pegado al toque
     const P = S.P;
-    if (!fichasListas(P) || !enlaceListo(P)) { S.quiere = true; render(); programarPreparar(); return; }
+    if (P.revision.estado === 'en_curso' || !fichasListas(P) || !enlaceListo(P)) { S.quiere = true; render(); programarPreparar(); return; }
     S.quiere = false;
-    const files = S.fichas.files, url = P.conEnlace && !P.demo && P.corto && P.corto.firma === firma(piezaMin(P)) ? P.corto.url : '';
-    let datos = url ? { files, text: url } : { files };
-    if (url && !(navigator.canShare && navigator.canShare(datos))) datos = { files };
+    const files = S.fichas.files, text = textoCompartir(P);
+    let datos = text ? { files, text } : { files };
+    if (text && !(navigator.canShare && navigator.canShare(datos))) datos = { files };
     if (puedeCompartirFicheros(files)) {
-      navigator.share(datos).catch(e => { if (e && e.name !== 'AbortError') { S.alternativas = true; S.error = 'El móvil no ha dejado compartir. Usa una de estas opciones.'; render(); } });
+      navigator.share(datos).then(() => M.evento('compartida')).catch(e => { if (e && e.name !== 'AbortError') { S.alternativas = true; S.error = 'El móvil no ha dejado compartir. Usa una de estas opciones.'; render(); } });
     } else { S.alternativas = true; S.error = ''; render(); }
   }
   function descargar() {
     if (!S.fichas) return;
     S.fichas.files.forEach((f, i) => { const a = document.createElement('a'); a.href = S.fichas.urls[i]; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); });
+    M.evento('compartida');
   }
-  async function copiarImagen(i, b) {
-    try {
-      await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': S.fichas.files[i] })]);
-      b.textContent = 'Copiada: pégala en el chat';
-    } catch (e) { b.textContent = 'No se puede copiar aquí: mantenla pulsada'; }
+  async function copiarImagen(b) {
+    try { await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': S.fichas.files[0] })]); b.textContent = 'Copiada: pégala en el chat'; M.evento('compartida'); }
+    catch (e) { b.textContent = 'No se puede copiar aquí: mantenla pulsada'; }
   }
   function alternativasHTML(P) {
     if (!S.fichas) return '';
-    const url = P.conEnlace && !P.demo && P.corto ? P.corto.url : '';
-    const n = S.fichas.files.length;
+    const text = textoCompartir(P), n = S.fichas.files.length;
     return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
 <span style="font-size:16px;font-weight:700">Otras formas de mandarla</span>
-<span style="font-size:14px;line-height:1.4">Mantén pulsada ${n === 1 ? 'la imagen' : 'una imagen'} para copiarla o guardarla en fotos. Si estás dentro de WhatsApp, Instagram o Gmail, abre esta página en Safari o Chrome para compartir con un toque.</span>
+<span style="font-size:14px;line-height:1.4">Mantén pulsada ${n === 1 ? 'la imagen' : 'una imagen'} para copiarla o guardarla. Si estás dentro de WhatsApp, Instagram o Gmail, abre esta página en Safari o Chrome para compartir con un toque.</span>
 <div style="display:flex;gap:8px;overflow-x:auto">${S.fichas.urls.map((u, i) => `<img src="${u}" alt="ficha ${i + 1}" style="width:${n === 1 ? 150 : 110}px;height:auto;border:2px solid var(--ink);flex:none">`).join('')}</div>
-${window.ClipboardItem && navigator.clipboard && navigator.clipboard.write ? `<button class="btn" data-copiaimg="0">${n === 1 ? 'Copiar la imagen' : 'Copiar la primera imagen'}</button>` : ''}
-${url ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Mandar el enlace por WhatsApp</a>` : ''}
+${window.ClipboardItem && navigator.clipboard && navigator.clipboard.write ? `<button class="btn" data-copiaimg>${n === 1 ? 'Copiar la imagen' : 'Copiar la primera imagen'}</button>` : ''}
+${text ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Mandar el texto por WhatsApp</a>` : ''}
 <button class="btn" data-descargar>${n === 1 ? 'Guardar la imagen' : 'Guardar las ' + n + ' imágenes'}</button>
 </div>`;
   }
 
-  // ---------- vista de quien recibe el enlace ----------
+  // ---------- quien recibe el enlace ----------
+  function validarPieza(P) {
+    try {
+      P = migrar(P); if (!P) return null;
+      P.original = P.original.filter(s => typeof s === 'string' || (s && typeof s.t === 'string' && P.tramos[s.k]));
+      Object.values(P.tramos).forEach(t => { if (VERS.indexOf(t.ver) < 0) t.ver = 'sin fuente'; if (!urlBien(t.url)) t.url = ''; });
+      const N = {}; Object.keys(P.N || {}).forEach(k => { const n = P.N[k]; if (/^l\d{1,2}$/.test(k) && n && Array.isArray(n.items) && typeof n.titulo === 'string') { n.items.forEach(e => { if (!urlBien(e.url)) e.url = ''; if (VERS.indexOf(e.ver) < 0) e.ver = 'sin fuente'; }); N[k] = n; } });
+      P.N = N;
+      if (P.also && !urlBien(P.also.url)) P.also.url = '';
+      P.fichas = (P.fichas || []).filter(KEY_OK);
+      P.destino = P.destino === 'chat' ? 'chat' : 'redes';
+      P.tono = P.tono === 'complice' ? 'complice' : 'neutro';
+      return P;
+    } catch (e) { return null; }
+  }
+  function leerEnlaceLargo() {
+    const m = location.hash.match(/^#p=(.+)$/); if (!m || !window.LZString) return null;
+    try { return validarPieza(JSON.parse(window.LZString.decompressFromEncodedURIComponent(m[1]))); } catch (e) { return null; }
+  }
+  async function cargarCorto() {
+    const m = location.hash.match(/^#v=([A-Za-z0-9]{6,16})$/); if (!m) return false;
+    set({ paso: 'cargavista', errorVista: '' });
+    try { const P = validarPieza(await M.leerPieza(m[1])); if (!P) throw 0; abrirVista(P, m[1]); }
+    catch (e) { set({ paso: 'cargavista', errorVista: e && e.tipo === 'no_existe' ? 'Esta pieza no existe o ha caducado.' : 'No he podido abrir esta pieza. Prueba en un rato.' }); }
+    return true;
+  }
+  function abrirVista(P, id) {
+    const k = 'aa_vista_' + (id || firma(P.original));
+    if (!lee(k)) { guarda(k, '1'); M.evento('enlace_abierto'); }
+    set({ paso: 'vista', vista: P, det: {} });
+  }
   function vCargaVista() {
     const home = esc(location.origin + location.pathname);
-    return `<header class="top"><a href="${esc(location.origin + location.pathname)}" aria-label="and also: ir al principio" style="text-decoration:none">${logo(24)}</a></header><main class="pad" style="display:flex;flex-direction:column;gap:16px;padding-top:40px">${S.errorVista ? `<div class="err" role="alert">${esc(S.errorVista)}</div><a class="btn dark" href="${home}" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Ir a and also</a>` : '<span class="think" style="font-size:18px">Abriendo la pieza…</span>'}</main>`;
+    return `<header class="top"><a href="${home}" aria-label="and also: ir al principio" style="text-decoration:none">${logo(24)}</a></header><main class="pad" style="display:flex;flex-direction:column;gap:16px;padding-top:40px">${S.errorVista ? `<div class="err" role="alert">${esc(S.errorVista)}</div><a class="btn dark" href="${home}" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Ir a and also</a>` : '<span class="think" style="font-size:18px">Abriendo la pieza…</span>'}</main>`;
   }
   function vVista() {
-    const P = S.vista;
-    const nodos = P.mapa.filter(k => P.N[k]);
-    return `<header class="top"><a href="${esc(location.origin + location.pathname)}" aria-label="and also: ir al principio" style="text-decoration:none">${logo(24)}</a><a class="btn" href="${esc(location.origin + location.pathname)}" style="display:inline-flex;align-items:center;text-decoration:none;min-height:36px;font-size:13px">Haz la tuya</a></header>
-<main style="display:flex;flex-direction:column;gap:12px">
-<div class="pad" style="padding-bottom:0;display:flex;flex-direction:column;gap:8px"><span class="lab">te lo han contado entero</span><h1 style="margin:0;font-size:30px;line-height:1.04;letter-spacing:-.025em">${resaltar(P.portada[P.tono] || P.portada.neutro)}</h1></div>
-<div class="slides" id="slides">${slidesHTML(P).map(s => `<div class="slidebox">${s}</div>`).join('')}</div>
-<div class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:14px">
-<span class="lab">lo que llegó, frase a frase</span>
-<p style="margin:0;font-size:18px;line-height:1.6">${originalHTML(P, true, false)}</p>
-<ul class="list" style="margin:0;padding:0;list-style:none">${P.original.filter(s => typeof s !== 'string').map(s => { const t = P.tramos[s.k]; return `<li style="display:flex;flex-direction:column;gap:3px"><span style="font-size:14px;font-weight:600">${mark(esc(s.t), t.ver)} · ${esc(t.ver)}</span><span style="font-size:15px;line-height:1.35">${esc(t.porque)}</span><span class="small" style="font-size:12px">${fuente(t.fuente, t.url)}</span></li>`; }).join('')}</ul>
-${nodos.length ? `<span class="lab" style="margin-top:6px">lo que hay detrás</span>` : ''}
-${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:flex;flex-direction:column;gap:6px"><span class="lab" style="font-size:10px">${k === 'also' ? hl('also') + ' · ' : ''}${esc(n.q)}</span><span style="font-size:17px;font-weight:700;line-height:1.2">${esc(n.titulo)}</span>${n.r ? `<span style="font-size:15px;line-height:1.4">${esc(n.r)}</span>` : ''}<div class="list">${n.items.map(e => `<div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:14px;font-weight:600">${esc(e.t)}</span><span style="font-size:12px;color:var(--grey)">${esc(e.ver)} · ${fuente(e.f, e.url)}</span></div>`).join('')}</div></div>`; }).join('')}
-<p class="small" style="margin:0">${garantia(false, P)}</p>
-<p class="small" style="margin:0;line-height:1.45">Hecha con and also. Cada punto lleva su veredicto: ${VERS.join(', ')}. Lo que es opinión lleva nombre.</p>
-<a class="btn dark" href="${esc(location.origin + location.pathname)}" style="display:flex;align-items:center;justify-content:center;text-decoration:none;min-height:52px">Cuenta tú el resto de algo</a>
-</div></main>`;
+    const P = S.vista, home = esc(location.origin + location.pathname), todas = candidatas(P);
+    return `<header class="top"><a href="${home}" aria-label="and also: ir al principio" style="text-decoration:none">${logo(24)}</a><a class="btn" href="${home}" data-ref style="display:inline-flex;align-items:center;text-decoration:none;min-height:36px;font-size:13px">Haz la tuya</a></header>
+<main style="display:flex;flex-direction:column;gap:14px">
+<div class="pad" style="padding-bottom:0;display:flex;flex-direction:column;gap:8px"><span class="lab">te lo han contado entero</span><h1 style="margin:0;font-size:30px;line-height:1.04;letter-spacing:-.025em">${resaltar(titular(P))}</h1></div>
+<div class="slides">${slidesHTML(P, todas).map(s => `<div class="slidebox">${s}</div>`).join('')}</div>
+<div class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:12px">
+${todas.map(k => `<div style="border-top:2px solid var(--ink);padding-top:10px;display:flex;flex-direction:column;gap:6px"><button class="link" data-det="${k}" style="align-self:flex-start;font-size:15px;text-align:left">${k === 'gancho' ? (P.esPregunta ? 'Lo que se suele dar por hecho' : 'Lo que llegó, frase a frase') : k === 'also' ? 'Lo que también es verdad' : /^f/.test(k) ? '«' + esc(trs(P)[+k.slice(1)].t) + '»' : esc(P.N[k].q)} ${S.det[k] ? '▴' : '▾'}</button>${S.det[k] ? detalleHTML(P, k).replace(/<button class="link" data-quitaq[^>]*>[^<]*<\/button>/, '') : ''}</div>`).join('')}
+<p class="small" style="margin:0;line-height:1.45">Hecha con and also el ${esc(P.fecha || '')}. Cada punto lleva su veredicto: ${VERS.join(', ')}. Lo que es opinión lleva nombre.</p>
+</div>
+<section style="background:var(--ink);color:var(--paper);padding:26px 20px 30px;display:flex;flex-direction:column;gap:14px">
+<h2 style="margin:0;font-size:28px;line-height:1.02;letter-spacing:-.03em">¿Te ha llegado algo a ti? Cuéntale el ${hl('resto')}.</h2>
+<a class="btn" href="${home}" data-ref style="display:flex;align-items:center;justify-content:center;text-decoration:none;min-height:52px;background:var(--paper);color:var(--ink);border-color:var(--paper)">Abrir and also</a>
+<p style="margin:0;font-size:13px;line-height:1.45;color:#BDBBB5">and also funciona con invitación. Si no tienes, pídesela a quien te ha mandado esto.</p>
+</section>
+</main>`;
   }
 
-  // ---------- eventos ----------
+  // ---------- ajustes y administración ----------
+  function vAjustes() {
+    const modo = M.modo(), yo = S.yo, maestro = yo && yo.rol === 'maestro', A = S.admin || {};
+    const nombres = { abre: 'Aperturas', pieza: 'Piezas nuevas', memoria: 'Desde memoria', pregunta: 'Preguntas', compartida: 'Compartidas', enlace_abierto: 'Enlaces abiertos', receptor_crea: 'Receptores que crean', vuelta7: 'Vuelven a los 7 días', llamada: 'Llamadas a la IA' };
+    return `<header class="top">${logoBtn(22)}<button class="btn" data-go="inicio" style="min-height:36px;font-size:13px">Volver</button></header>
+<main class="pad" style="display:flex;flex-direction:column;gap:18px">
+<h1 style="margin:6px 0 0;font-size:30px;line-height:1.02;letter-spacing:-.025em">Ajustes</h1>
+${S.error ? `<div class="aviso">${esc(S.error)}</div>` : ''}
+<section class="card" style="display:flex;flex-direction:column;gap:8px"><span class="lab">tu acceso</span>
+${modo === 'clave' ? '<span style="font-size:16px;line-height:1.4">Usas tu propia clave de Anthropic.</span>' : M.ajustes.codigo ? `<span style="font-size:16px;line-height:1.4">${!yo ? '<span class="think">Comprobando tu invitación…</span>' : yo.error ? esc(yo.error) : maestro ? 'Tienes el código maestro: gestionas las invitaciones.' : 'Invitación de <b>' + esc(yo.nombre) + '</b> · hoy ' + yo.usadas + ' de ' + yo.cupo + ' consultas.'}</span><button class="btn" type="button" data-borracodigo>Quitar la invitación de este móvil</button>` : '<span style="font-size:16px;line-height:1.4">No tienes invitación en este móvil. Abre el enlace de invitación que te han pasado.</span>'}
+</section>
+${maestro ? `<section class="card" style="display:flex;flex-direction:column;gap:10px"><span class="lab">invitaciones</span>
+<p style="margin:0;font-size:14px;line-height:1.45">Una por persona, con ${A.cupo || 60} consultas al día. Si una se filtra, revócala y solo se corta esa.</p>
+<form id="finv" style="display:flex;gap:8px"><label for="ninv" class="sr">Nombre</label><input id="ninv" type="text" placeholder="Nombre de la persona" maxlength="40" autocomplete="off"><button class="btn dark" type="submit">Crear</button></form>
+${A.nueva ? `<div class="aviso" style="display:flex;flex-direction:column;gap:8px"><span>Invitación para <b>${esc(A.nueva.nombre)}</b>. Mándale este enlace:</span><span style="font-size:13px;word-break:break-all">${esc(A.nueva.url)}</span><div style="display:flex;gap:8px"><button class="btn" data-copiainv>Copiar</button>${navigator.share ? '<button class="btn" data-compartinv>Compartir</button>' : ''}</div></div>` : ''}
+${A.error ? `<div class="err">${esc(A.error)}</div>` : ''}
+${A.lista ? (A.lista.length ? `<ul class="list" style="margin:0;padding:0;list-style:none">${A.lista.map(i => `<li style="display:flex;justify-content:space-between;align-items:center;gap:8px"><span style="display:flex;flex-direction:column"><span style="font-weight:600">${esc(i.nombre)}</span><span class="small" style="font-size:12px">hoy ${i.hoy} consultas · …${esc(i.codigo.slice(-4))}</span></span><button class="link" data-revocar="${esc(i.codigo)}" style="color:var(--grey)">Revocar</button></li>`).join('')}</ul>` : '<span class="small">Aún no has creado ninguna.</span>') : '<span class="small think">Cargando…</span>'}
+</section>
+<section class="card" style="display:flex;flex-direction:column;gap:10px"><span class="lab">uso de los últimos 7 días</span>
+${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reverse().map(d => `<th>${esc(d.dia.slice(8))}</th>`).join('')}<th>Total</th></tr></thead><tbody>${Object.keys(nombres).map(ev => `<tr><td>${nombres[ev]}</td>${A.stats.slice(0, 7).reverse().map(d => `<td>${d[ev] || ''}</td>`).join('')}<td><b>${A.stats.slice(0, 7).reduce((s, d) => s + (d[ev] || 0), 0)}</b></td></tr>`).join('')}</tbody></table><span class="small">Solo contadores por día: ni quién, ni qué se ha preguntado.</span>` : '<span class="small think">Cargando…</span>'}
+</section>` : ''}
+<button class="link" data-go="guia" style="align-self:flex-start">Úsalo desde WhatsApp →</button>
+<details class="card"><summary style="font-weight:600;cursor:pointer">Avanzado: usar tu propia clave de Anthropic</summary>
+<form id="fcl" style="display:flex;flex-direction:column;gap:10px;margin-top:12px"><label for="cl" class="small">Tu clave se guarda solo en este móvil y tiene prioridad sobre la invitación. Necesita la búsqueda web activada.</label>
+<input id="cl" type="password" autocomplete="off" spellcheck="false" placeholder="${M.ajustes.clave ? 'Guardada: ••••' + esc(M.ajustes.clave.slice(-4)) : 'sk-ant-…'}">
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn dark" type="submit">Guardar</button><button class="btn" type="button" data-probar>Probar</button>${M.ajustes.clave ? '<button class="btn" type="button" data-borraclave>Borrar la clave</button>' : ''}</div>
+<span id="estado" class="small" aria-live="polite"></span></form></details>
+</main>`;
+  }
+  async function cargarAjustes() {
+    if (M.modo() !== 'invitado') return;
+    try { S.yo = await M.yo(); } catch (e) { S.yo = { error: e.mensaje || 'No he podido comprobar la invitación.' }; }
+    if (S.paso === 'ajustes') render();
+    if (S.yo && S.yo.rol === 'maestro') {
+      S.admin = S.admin || {};
+      try { const l = await M.invitaciones.lista(); S.admin.lista = l.invitaciones; S.admin.cupo = l.cupo; } catch (e) { S.admin.error = e.mensaje; S.admin.lista = []; }
+      try { S.admin.stats = (await M.estadisticas()).dias; } catch (e) { S.admin.stats = []; }
+      if (S.paso === 'ajustes') render();
+    }
+  }
+
+  // ---------- eventos de la interfaz ----------
   function bind() {
     const q = (sel, fn) => app.querySelectorAll(sel).forEach(fn);
-    q('[data-go]', b => b.onclick = () => { if (b.dataset.go === 'inicio' && location.hash) history.replaceState(null, '', location.pathname); if (b.dataset.go === 'inicio') { S.hoja = null; S.corto = null; } set({ paso: b.dataset.go, error: '', aviso: b.dataset.go === 'ajustes' ? S.aviso : '' }); window.scrollTo(0, 0); });
-    q('[data-demo]', b => b.onclick = () => abrirDemo(b.dataset.demo));
-    q('[data-abrir]', b => b.onclick = () => { const p = store.lista().find(x => x.id === b.dataset.abrir); if (p) abrirPieza(p); });
+    q('[data-go]', b => b.onclick = () => {
+      const go = b.dataset.go;
+      if (go === 'inicio') { if (location.hash) history.replaceState(null, '', location.pathname); S.hoja = null; S.corto = null; S.fichas = null; }
+      set({ paso: go, error: '' }); window.scrollTo(0, 0);
+      if (go === 'ajustes') cargarAjustes();
+    });
+    q('[data-abrir]', b => b.onclick = () => { const p = store.lista().find(x => x.id === b.dataset.abrir); if (p) { S.fichas = null; abrirPieza(p); } });
     q('[data-borrar]', b => b.onclick = () => { store.borrar(b.dataset.borrar); render(); });
-    q('[data-tab]', b => b.onclick = () => { set({ tab: b.dataset.tab, alternativas: false, quiere: false, error: '' }); window.scrollTo(0, 0); });
-    q('[data-tramo]', b => b.onclick = () => set({ tramo: b.dataset.tramo, hoja: { tramo: b.dataset.tramo } }));
     q('[data-pp]', b => b.onclick = () => { S.pp = (S.pp || 0) + (+b.dataset.pp); render(); });
-    q('[data-sug]', b => b.onclick = () => preguntarTexto(b.dataset.sug));
-    q('[data-veroriginal]', b => b.onclick = () => set({ verOriginal: !S.verOriginal }));
     q('[data-empieza]', b => b.onclick = () => { const t = document.getElementById('tin'); t.value = b.dataset.empieza; S.entrada.texto = t.value; t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
-    q('[data-q]', b => b.onclick = () => preguntarTipo(b.dataset.q, '¿' + M.PREGUNTA[b.dataset.q].charAt(1).toUpperCase() + M.PREGUNTA[b.dataset.q].slice(2)));
-    q('[data-ver]', b => b.onclick = () => { const k = b.dataset.ver; set({ hoja: { k, pregunta: S.P.N[k].q, nodo: S.P.N[k], ya: true } }); });
-    q('[data-toggle]', b => b.onclick = () => { const k = b.dataset.toggle, P = S.P; P.fuera = esta(P.fuera, k) ? P.fuera.filter(z => z !== k) : P.fuera.concat([k]); guardaP(); render(); });
-    q('[data-largo]', b => b.onclick = () => { const y = window.scrollY; S.P.largo = b.dataset.largo; S.enlace = ''; guardaP(); S.corto = null; render(); window.scrollTo(0, y); });
-    q('[data-tono]', b => b.onclick = () => { const y = window.scrollY; S.P.tono = b.dataset.tono; S.enlace = ''; guardaP(); S.corto = null; render(); window.scrollTo(0, y); });
-    q('[data-accept]', b => b.onclick = () => { const h = S.hoja, P = S.P; P.N[h.k] = h.nodo; if (!esta(P.mapa, h.k)) P.mapa.push(h.k); if (!esta(P.orden, h.k)) P.orden.push(h.k); P.fuera = P.fuera.filter(z => z !== h.k); guardaP(); set({ hoja: null, tab: 'mapa' }); });
+    q('[data-pegar]', b => b.onclick = async () => { try { const t = await navigator.clipboard.readText(); if (t) { S.entrada.texto = t; render(); } } catch (e) { b.textContent = 'Mantén pulsado el cuadro y pega'; } });
+    q('[data-sug]', b => b.onclick = () => preguntar(b.dataset.sug));
+    q('[data-veroriginal]', b => b.onclick = () => set({ verOriginal: !S.verOriginal }));
+    q('[data-verajustes]', b => b.onclick = () => set({ verAjustes: !S.verAjustes }));
+    const keep = fn => { const y = window.scrollY; fn(); render(); window.scrollTo(0, y); };
+    q('[data-det]', b => b.onclick = () => keep(() => { S.det[b.dataset.det] = !S.det[b.dataset.det]; }));
+    q('[data-destino]', b => b.onclick = () => keep(() => { S.P.destino = b.dataset.destino; S.alternativas = false; guardaP(); }));
+    q('[data-tono]', b => b.onclick = () => keep(() => { S.P.tono = b.dataset.tono; guardaP(); }));
+    q('[data-incluir]', b => b.onclick = () => keep(() => {
+      const P = S.P, k = b.dataset.incluir;
+      if (esta(P.fichas, k)) P.fichas = P.fichas.filter(x => x !== k);
+      else if (diapos(P).length < MAX_FICHAS) P.fichas = (P.fichas || []).concat([k]);
+      else { S.error = 'Caben ' + MAX_FICHAS + ' fichas como mucho. Quita otra antes.'; return; }
+      S.error = ''; guardaP();
+    }));
+    q('[data-quitaq]', b => b.onclick = () => keep(() => { const P = S.P, k = b.dataset.quitaq; delete P.N[k]; P.fichas = P.fichas.filter(x => x !== k); S.det[k] = false; guardaP(); }));
+    q('[data-accept]', b => b.onclick = () => {
+      const h = S.hoja, P = S.P; P.N[h.k] = h.nodo;
+      if (diapos(Object.assign({}, P, { destino: 'redes' })).length < MAX_FICHAS) P.fichas = (P.fichas || []).concat([h.k]);
+      guardaP(); S.det[h.k] = false; set({ hoja: null });
+      setTimeout(() => { const el = app.querySelector('[data-det="' + h.k + '"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
+    });
     q('[data-close]', b => b.onclick = () => set({ hoja: null }));
     q('[data-cancelar]', b => b.onclick = () => { if (ctrl) ctrl.abort(); });
-    q('[data-volver]', b => b.onclick = () => set({ paso: 'compo', tab: 'pieza', error: '' }));
-    q('[data-compartir]', b => b.onclick = () => exportar());
+    q('[data-compartir]', b => b.onclick = () => compartir());
     q('[data-descargar]', b => b.onclick = () => descargar());
-    q('[data-copiaimg]', b => b.onclick = () => copiarImagen(+b.dataset.copiaimg, b));
-    q('[data-conenlace]', b => b.onclick = () => { const P = S.P; P.conEnlace = !P.conEnlace; guardaP(); S.corto = null; render(); });
-    q('[data-copiar]', b => b.onclick = async () => {
-      if (S.P.demo) { S.enlace = ''; b.textContent = 'Los ejemplos no tienen enlace'; return; }
-      let u = ''; try { u = await enlaceCorto(); } catch (e) { b.textContent = 'Sin enlace'; return; } S.enlace = u;
-      try { await navigator.clipboard.writeText(u); b.textContent = 'Copiado'; } catch (e) { render(); }
-    });
+    q('[data-copiaimg]', b => b.onclick = () => copiarImagen(b));
+    q('[data-conenlace]', b => b.onclick = () => keep(() => { S.P.conEnlace = !S.P.conEnlace; S.corto = null; guardaP(); }));
+    q('[data-copiar]', b => b.onclick = async () => { try { await navigator.clipboard.writeText(await enlaceCorto()); b.textContent = 'Copiado'; } catch (e) { b.textContent = 'No se pudo'; } });
     q('[data-quitaimg]', b => b.onclick = () => { S.entrada.imagen = null; render(); });
+    q('[data-ref]', b => b.addEventListener('click', () => guarda('aa_ref', '1')));
+    q('[data-borracodigo]', b => b.onclick = () => { M.ajustes.codigo = ''; S.yo = null; render(); });
+    q('[data-borraclave]', b => b.onclick = () => { M.ajustes.clave = ''; render(); });
+    q('[data-revocar]', b => b.onclick = async () => { b.textContent = 'Revocando…'; try { await M.invitaciones.borrar(b.dataset.revocar); S.admin.lista = S.admin.lista.filter(i => i.codigo !== b.dataset.revocar); } catch (e) { S.admin.error = e.mensaje; } render(); });
+    q('[data-copiainv]', b => b.onclick = async () => { try { await navigator.clipboard.writeText(S.admin.nueva.url); b.textContent = 'Copiado'; } catch (e) {} });
+    q('[data-compartinv]', b => b.onclick = () => { navigator.share({ text: 'Te paso and also: ' + S.admin.nueva.url }).catch(() => {}); });
+    q('[data-probar]', b => b.onclick = async () => { const est = document.getElementById('estado'); est.textContent = 'Probando…'; try { await M.probarClave(); est.textContent = 'Funciona.'; } catch (e) { est.textContent = (e && e.mensaje) || 'No funciona.'; } });
     const bg = app.querySelector('[data-close-bg]'); if (bg && !(S.hoja && S.hoja.cargando)) bg.onclick = e => { if (e.target === bg) set({ hoja: null }); };
     const tin = document.getElementById('tin'); if (tin) tin.oninput = () => { S.entrada.texto = tin.value; };
+    const chat = document.getElementById('chat'); if (chat) chat.oninput = () => { S.P.paraChat = chat.value.slice(0, 400); guardaP(); };
     const fimg = document.getElementById('fimg'); if (fimg) fimg.onchange = () => leerImagen(fimg.files && fimg.files[0]);
     const fin = document.getElementById('fin'); if (fin) fin.onsubmit = e => { e.preventDefault(); empezar(); };
-    const fq = document.getElementById('fq'); if (fq) fq.onsubmit = e => { e.preventDefault(); preguntarTexto(document.getElementById('q').value); };
-    const fcl = document.getElementById('fcl'); if (fcl) fcl.onsubmit = e => {
-      e.preventDefault(); const v = document.getElementById('cl').value.trim(); const mo = document.getElementById('mo').value;
-      if (v) M.ajustes.clave = v; M.ajustes.modelo = mo; S.aviso = ''; render();
-      const est = document.getElementById('estado'); if (est) est.textContent = 'Guardado en este móvil.';
+    const fq = document.getElementById('fq'); if (fq) fq.onsubmit = e => { e.preventDefault(); preguntar(document.getElementById('q').value); };
+    const finv = document.getElementById('finv'); if (finv) finv.onsubmit = async e => {
+      e.preventDefault(); const nombre = document.getElementById('ninv').value.trim(); if (!nombre) return;
+      try { const r = await M.invitaciones.crear(nombre); S.admin.nueva = { nombre: r.nombre, url: location.origin + location.pathname + '?c=' + r.codigo }; S.admin.lista = [{ codigo: r.codigo, nombre: r.nombre, hoy: 0 }].concat(S.admin.lista || []); S.admin.error = ''; }
+      catch (er) { S.admin.error = er.mensaje; }
+      render();
     };
-    q('[data-probar]', b => b.onclick = async () => {
-      const est = document.getElementById('estado'); est.textContent = 'Probando…';
-      try { await M.probarClave(); est.textContent = M.modo() === 'invitado' ? 'Funciona. Ya puedes pegar un mensaje.' : 'Funciona. Recuerda tener activada la búsqueda web.'; } catch (e) { est.textContent = (e && e.mensaje) || 'No funciona.'; }
-    });
-    q('[data-borraclave]', b => b.onclick = () => { M.ajustes.clave = ''; render(); });
-    q('[data-borracodigo]', b => b.onclick = () => { M.ajustes.codigo = ''; render(); });
+    const fcl = document.getElementById('fcl'); if (fcl) fcl.onsubmit = e => { e.preventDefault(); const v = document.getElementById('cl').value.trim(); if (v) M.ajustes.clave = v; render(); };
     const sh = app.querySelector('.sheet'); if (sh) { const b = sh.querySelector('button'); if (b) b.focus(); }
   }
 
   function leerImagen(f) {
     if (!f) return;
     if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) { set({ error: 'Sube la captura como imagen PNG, JPG o WebP.' }); return; }
-    const img = new Image(); const url = URL.createObjectURL(f);
+    const img = new Image(), url = URL.createObjectURL(f);
     img.onload = () => {
       // reducir a 1280 px de lado: menos peso para el intermediario y menos gasto
       const k = Math.min(1, 1280 / Math.max(img.width, img.height));
       const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      const d = c.toDataURL('image/jpeg', 0.75);
-      S.entrada.imagen = { tipo: 'image/jpeg', datos: d.split(',')[1] }; URL.revokeObjectURL(url); S.error = ''; render();
+      S.entrada.imagen = { tipo: 'image/jpeg', datos: c.toDataURL('image/jpeg', 0.75).split(',')[1] }; URL.revokeObjectURL(url); S.error = ''; render();
     };
     img.onerror = () => set({ error: 'No he podido abrir esa imagen.' });
     img.src = url;
   }
 
-  document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.hoja && !S.hoja.cargando) set({ hoja: null }); });
-  window.addEventListener('resize', () => { if (S.paso === 'envio' || S.paso === 'vista' || (S.paso === 'compo' && S.tab === 'pieza')) escalar(); });
-  window.addEventListener('hashchange', () => { const P = leerEnlace(); if (P) set({ paso: 'vista', vista: P }); else cargarCorto(); });
-
   // ---------- arranque ----------
+  document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.hoja && !S.hoja.cargando) set({ hoja: null }); });
+  window.addEventListener('resize', () => escalar());
+  window.addEventListener('hashchange', () => { const P = leerEnlaceLargo(); if (P) abrirVista(P); else cargarCorto(); });
   (function () {
-    const P = leerEnlace();
-    if (P) { S.paso = 'vista'; S.vista = P; }
-    else if (/^#v=/.test(location.hash)) { cargarCorto(); return; }
-    else {
-      const u = new URLSearchParams(location.search);
-      const cod = u.get('c');
-      if (cod && /^[A-Za-z0-9_-]{6,64}$/.test(cod)) { M.ajustes.codigo = cod; history.replaceState(null, '', location.pathname); }
-      const t = [u.get('t') || u.get('text') || '', u.get('u') || u.get('url') || ''].filter(Boolean).join(' ').trim();
-      if (t) { S.entrada.texto = t; history.replaceState(null, '', location.pathname); }
-    }
+    // medición anónima: una apertura al día por dispositivo y si vuelve a los 7 días
+    const dia = new Date().toISOString().slice(0, 10);
+    if (lee('aa_dia') !== dia) { guarda('aa_dia', dia); M.evento('abre'); }
+    if (!lee('aa_alta')) guarda('aa_alta', dia);
+    else if (!lee('aa_v7') && Date.now() - Date.parse(lee('aa_alta')) >= 7 * 864e5) { guarda('aa_v7', '1'); M.evento('vuelta7'); }
+    const P = leerEnlaceLargo();
+    if (P) { abrirVista(P); return; }
+    if (/^#v=/.test(location.hash)) { cargarCorto(); return; }
+    const u = new URLSearchParams(location.search);
+    const cod = u.get('c');
+    if (cod && /^[A-Za-z0-9_-]{6,64}$/.test(cod)) { M.ajustes.codigo = cod; history.replaceState(null, '', location.pathname); }
+    const t = [u.get('t') || u.get('text') || '', u.get('u') || u.get('url') || ''].filter(Boolean).join(' ').trim();
+    if (t) { S.entrada.texto = t; history.replaceState(null, '', location.pathname); }
     render();
   })();
 })();
