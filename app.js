@@ -180,17 +180,20 @@
   }
 
   function vInicio() {
-    const piezas = store.lista().filter(p => !p.demo);
+    const todas = store.lista().filter(p => !p.demo);
+    const POR = 3, pags = Math.max(1, Math.ceil(todas.length / POR));
+    S.pp = Math.min(Math.max(S.pp || 0, 0), pags - 1);
+    const piezas = todas.slice(S.pp * POR, S.pp * POR + POR);
     const modo = M.modo();
-    const legend = VERS.map(v => `<span style="white-space:nowrap">${mark(v, v)}</span>`).join('<span style="opacity:.5"> · </span>');
+    const resto = ['¿Por qué ha pasado?', '¿Desde cuándo?', '¿A quién afecta?', '¿Es lo normal?', '¿Qué también es verdad?', '¿Qué no se sabe aún?'];
     return `<header class="top">${logoBtn(24)}<button class="btn" data-go="ajustes" style="border:0;padding:0;min-height:36px;font-size:14px;font-weight:500;text-decoration:underline;text-underline-offset:3px">Ajustes</button></header>
 <main style="display:flex;flex-direction:column">
 <section class="pad" style="padding-top:20px;display:flex;flex-direction:column;gap:22px">
 <h1 style="margin:0;font-size:46px;line-height:.96;letter-spacing:-.04em;font-weight:700">Lo que te llega es una parte.<br>Cuenta el ${hl('resto')}.</h1>
 ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
 <form id="fin" class="composer">
-<label for="tin" style="font-size:15px;font-weight:600">Pega lo que te ha llegado o pregúntalo</label>
-<textarea id="tin" rows="4" placeholder="Un mensaje, un titular, un enlace… o «¿es verdad que…?»">${esc(S.entrada.texto)}</textarea>
+<label for="tin" style="font-size:15px;font-weight:600">¿Qué quieres entender?</label>
+<textarea id="tin" rows="4" placeholder="Pega una noticia, un mensaje o un enlace… o pregunta por cualquier tema">${esc(S.entrada.texto)}</textarea>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px">
 <label class="link" style="cursor:pointer">${S.entrada.imagen ? 'Captura lista ✓' : '+ Subir una captura'}<input id="fimg" type="file" accept="image/*" class="sr"></label>
 ${S.entrada.imagen ? '<button type="button" class="link" data-quitaimg>Quitar</button>' : ''}
@@ -198,16 +201,23 @@ ${S.entrada.imagen ? '<button type="button" class="link" data-quitaimg>Quitar</b
 <button class="btn dark" type="submit" style="min-height:54px;font-size:17px">Cuéntame el resto</button>
 </form>
 <div style="display:flex;flex-direction:column;gap:8px"><span class="small">o empieza así</span>
-<div style="display:flex;flex-wrap:wrap;gap:8px">${['¿Es verdad que ', 'Me han dicho que ', '¿Por qué '].map(t => `<button class="chip" data-empieza="${esc(t)}">${esc(t.trim())}…</button>`).join('')}</div></div>
+<div style="display:flex;flex-wrap:wrap;gap:8px">${['¿Por qué ', '¿Qué hay detrás de ', '¿Cómo me afecta ', 'Explícame '].map(t => `<button class="chip" data-empieza="${esc(t)}">${esc(t.trim())}…</button>`).join('')}</div></div>
 ${modo === 'sin_clave' ? '<p class="small" style="margin:0">Para empezar necesitas una clave de Anthropic: la pones una vez en Ajustes y se queda solo en este móvil.</p>' : ''}${modo === 'falta_codigo' ? '<p class="small" style="margin:0">Ábrelo desde el enlace de invitación que te han pasado: lleva tu acceso dentro.</p>' : ''}
 </section>
-${piezas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:8px"><span class="lab">tus piezas</span>
-<ul class="list" style="margin:0;padding:0;list-style:none">${piezas.map(p => `<li style="display:flex;justify-content:space-between;align-items:center;gap:8px"><button class="btn" data-abrir="${esc(p.id)}" style="border:0;padding:0;text-align:left;flex:1 1 auto;min-height:44px;display:flex;flex-direction:column;justify-content:center;gap:2px"><span style="font-size:16px">${esc(p.titulo)}</span><span class="small" style="font-weight:500;font-size:12px">${esc(p.fecha || '')}</span></button><button class="link" data-borrar="${esc(p.id)}" aria-label="Borrar ${esc(p.titulo)}" style="color:var(--grey)">Borrar</button></li>`).join('')}</ul></section>` : ''}
-<section style="background:var(--ink);color:var(--paper);padding:28px 20px 30px;display:flex;flex-direction:column;gap:22px">
-<span class="lab" style="color:#BDBBB5">qué te devuelve</span>
-<div class="paso"><span class="num">1</span><div><h2>Cada frase, con su marca</h2><p style="font-size:15px;line-height:1.9">${legend}</p></div></div>
-<div class="paso"><span class="num">2</span><div><h2>Lo que también es verdad</h2><p>El dato que el mensaje no cuenta, con su fuente. Y respuesta a lo que quieras preguntar.</p></div></div>
-<div class="paso"><span class="num">3</span><div><h2>Una ficha para el grupo</h2><p>Una, tres o cinco imágenes. Si quieres, un enlace corto con todas las fuentes.</p></div></div>
+${todas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:8px">
+<div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lab">tus piezas</span><span class="small" style="font-size:12px">${todas.length}</span></div>
+<ul class="list" style="margin:0;padding:0;list-style:none">${piezas.map(p => `<li style="display:flex;justify-content:space-between;align-items:center;gap:8px"><button class="btn" data-abrir="${esc(p.id)}" style="border:0;padding:0;text-align:left;flex:1 1 auto;min-height:44px;display:flex;flex-direction:column;justify-content:center;gap:2px;min-width:0"><span style="font-size:16px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(p.titulo)}</span><span class="small" style="font-weight:500;font-size:12px">${esc(p.fecha || '')}</span></button><button class="link" data-borrar="${esc(p.id)}" aria-label="Borrar ${esc(p.titulo)}" style="color:var(--grey)">Borrar</button></li>`).join('')}</ul>
+${pags > 1 ? `<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn" data-pp="-1" ${S.pp === 0 ? 'disabled' : ''} aria-label="Más recientes" style="min-height:40px;min-width:48px">←</button><span class="small">${S.pp + 1} de ${pags}</span><button class="btn" data-pp="1" ${S.pp >= pags - 1 ? 'disabled' : ''} aria-label="Anteriores" style="min-height:40px;min-width:48px">→</button></div>` : ''}
+</section>` : ''}
+<section style="background:var(--ink);color:var(--paper);padding:30px 20px 32px;display:flex;flex-direction:column;gap:20px">
+<h2 style="margin:0;font-size:32px;line-height:1;letter-spacing:-.03em">Todo lo que te llega tiene un ${hl('resto')}.</h2>
+<div style="display:flex;flex-direction:column">${resto.map((q, i) => `<span style="font-size:${i % 2 ? 24 : 27}px;line-height:1.25;font-weight:${i % 2 ? 500 : 700};letter-spacing:-.02em;opacity:${1 - i * 0.09}">${q}</span>`).join('')}</div>
+<div style="display:flex;flex-direction:column;gap:16px;border-top:2px solid #3A3936;padding-top:20px">
+<div><h3 style="margin:0 0 3px;font-size:19px">Entiéndelo</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Una noticia, un rumor o un tema: el contexto, el porqué y lo que no te cuentan.</p></div>
+<div><h3 style="margin:0 0 3px;font-size:19px">Tira del hilo</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Cada respuesta abre preguntas nuevas, pensadas para ese caso.</p></div>
+<div><h3 style="margin:0 0 3px;font-size:19px">Cuéntalo entero</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Una ficha que se entiende de un vistazo, para tu grupo o tus redes.</p></div>
+</div>
+<p style="margin:0;font-size:13px;line-height:1.45;color:#BDBBB5">Todo con fuentes. Lo que es opinión, se dice. Lo que no se sabe, también.</p>
 </section>
 <p class="small pad" style="margin:0;line-height:1.45;padding-top:16px">Tus piezas se guardan en este dispositivo. Lo que escribes se envía a la IA para buscar fuentes; nunca nombres de personas privadas.</p>
 </main>`;
@@ -596,6 +606,7 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     q('[data-borrar]', b => b.onclick = () => { store.borrar(b.dataset.borrar); render(); });
     q('[data-tab]', b => b.onclick = () => { set({ tab: b.dataset.tab, alternativas: false, quiere: false, error: '' }); window.scrollTo(0, 0); });
     q('[data-tramo]', b => b.onclick = () => set({ tramo: b.dataset.tramo, hoja: { tramo: b.dataset.tramo } }));
+    q('[data-pp]', b => b.onclick = () => { S.pp = (S.pp || 0) + (+b.dataset.pp); render(); });
     q('[data-sug]', b => b.onclick = () => preguntarTexto(b.dataset.sug));
     q('[data-veroriginal]', b => b.onclick = () => set({ verOriginal: !S.verOriginal }));
     q('[data-empieza]', b => b.onclick = () => { const t = document.getElementById('tin'); t.value = b.dataset.empieza; S.entrada.texto = t.value; t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
