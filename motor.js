@@ -50,14 +50,19 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
     const cuerpo = { model: modelo || ajustes.modelo, max_tokens: maxTokens || 4000, system: sistema, messages: mensajes };
     if (busquedas) cuerpo.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: busquedas }];
     let r;
-    try {
-      const cab = m === 'invitado'
-        ? { 'content-type': 'application/json', 'x-andalso-codigo': ajustes.codigo }
-        : { 'content-type': 'application/json', 'x-api-key': ajustes.clave, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
-      r = await fetch(m === 'invitado' ? proxy() : API, { method: 'POST', signal: señal, headers: cab, body: JSON.stringify(cuerpo) });
-    } catch (e) {
-      if (e && e.name === 'AbortError') throw { codigo: 'cancelado', mensaje: 'Cancelado.' };
-      throw { codigo: 'red', mensaje: m === 'invitado' ? 'No llego al servidor de and also. Si hay fútbol, algunas operadoras bloquean Cloudflare durante los partidos: prueba a cambiar de wifi a datos (o al revés) o vuelve cuando acabe el partido.' : 'No hay conexión con Anthropic. Revisa tu conexión y vuelve a probar.' };
+    const cab = m === 'invitado'
+      ? { 'content-type': 'application/json', 'x-andalso-codigo': ajustes.codigo }
+      : { 'content-type': 'application/json', 'x-api-key': ajustes.clave, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+    const t0 = Date.now();
+    for (let intento = 0; ; intento++) {
+      try { r = await fetch(m === 'invitado' ? proxy() : API, { method: 'POST', signal: señal, headers: cab, body: JSON.stringify(cuerpo) }); break; }
+      catch (e) {
+        if (e && e.name === 'AbortError') throw { codigo: 'cancelado', mensaje: 'Cancelado.' };
+        const seg = Math.round((Date.now() - t0) / 1000);
+        // si falla enseguida, suele ser un corte puntual: un reintento
+        if (intento === 0 && seg < 15) { await new Promise(x => setTimeout(x, 1500)); continue; }
+        throw { codigo: 'red', mensaje: (m === 'invitado' ? 'No llego al servidor de and also (falló a los ' + seg + ' s). Prueba otra vez; si sigue, cambia de wifi a datos o al revés.' : 'No hay conexión con Anthropic (falló a los ' + seg + ' s). Revisa tu conexión y vuelve a probar.') };
+      }
     }
     let datos = null; try { datos = await r.json(); } catch (e) {}
     if (!r.ok) {

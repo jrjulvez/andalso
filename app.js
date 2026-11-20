@@ -636,11 +636,11 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) { set({ error: 'Sube la captura como imagen PNG, JPG o WebP.' }); return; }
     const img = new Image(); const url = URL.createObjectURL(f);
     img.onload = () => {
-      // reducir a 1600 px de lado para no gastar de más
-      const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+      // reducir a 1280 px de lado: menos peso para el intermediario y menos gasto
+      const k = Math.min(1, 1280 / Math.max(img.width, img.height));
       const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      const d = c.toDataURL('image/jpeg', 0.85);
+      const d = c.toDataURL('image/jpeg', 0.75);
       S.entrada.imagen = { tipo: 'image/jpeg', datos: d.split(',')[1] }; URL.revokeObjectURL(url); S.error = ''; render();
     };
     img.onerror = () => set({ error: 'No he podido abrir esa imagen.' });

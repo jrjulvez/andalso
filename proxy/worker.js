@@ -16,6 +16,16 @@ const nuevoId = () => { const b = crypto.getRandomValues(new Uint8Array(9)); ret
 
 export default {
   async fetch(req, env) {
+    try { return await atender(req, env); }
+    catch (e) {
+      // devolver siempre un error legible (con CORS) en vez de cortar la conexión
+      return new Response(JSON.stringify({ error: { type: 'intermediario', message: 'El intermediario ha fallado: ' + (e && e.message || 'error') } }), { status: 502, headers: { 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json' } });
+    }
+  }
+};
+
+async function atender(req, env) {
+  {
     const origen = req.headers.get('Origin') || '';
     const permitidos = (env.ORIGENES || 'https://jrjulvez.github.io').split(',').map(s => s.trim());
     const cors = {
@@ -77,4 +87,4 @@ export default {
     });
     return new Response(r.body, { status: r.status, headers: { ...cors, 'content-type': 'application/json' } });
   }
-};
+}
