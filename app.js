@@ -165,7 +165,7 @@
     const f = { inicio: vInicio, ajustes: vAjustes, leyendo: vLeyendo, compo: vCompo, envio: vEnvio, vista: vVista }[S.paso] || vInicio;
     app.innerHTML = f();
     bind();
-    if (S.paso === 'envio' || S.paso === 'vista') escalar();
+    if (S.paso === 'envio' || S.paso === 'vista' || (S.paso === 'compo' && S.tab === 'pieza')) escalar();
   }
 
   function vInicio() {
@@ -239,7 +239,7 @@ ${clave ? '<button class="btn" type="button" data-borraclave>Borrar la clave de 
   }
 
   function tabsHTML() {
-    return `<nav aria-label="pasos" class="seg" style="padding:0 20px 10px">${[['original', 'Lo que llegó'], ['mapa', 'Detrás'], ['pieza', 'Tu pieza']].map(([k, l]) => `<button class="btn ${S.tab === k ? 'on' : ''}" aria-pressed="${S.tab === k}" data-tab="${k}">${l}</button>`).join('')}</nav>`;
+    return `<nav aria-label="pasos" class="tabs">${[['original', '1', 'Lo que llegó'], ['mapa', '2', 'Detrás'], ['pieza', '3', 'Tu pieza']].map(([k, n, l]) => `<button class="${S.tab === k ? 'on' : ''}" aria-current="${S.tab === k ? 'step' : 'false'}" data-tab="${k}"><span class="n">${n}</span>${l}</button>`).join('')}</nav>`;
   }
 
   function vCompo() {
@@ -266,7 +266,7 @@ ${clave ? '<button class="btn" type="button" data-borraclave>Borrar la clave de 
     } else if (S.tab === 'mapa') {
       body = `<div class="pad" style="display:flex;flex-direction:column">
 ${P.avisoBusqueda ? '<div class="err" style="margin-bottom:12px">Alguna búsqueda falló mientras leía. Revisa las fuentes antes de mandar nada.</div>' : ''}
-<p style="margin:0 0 14px;font-size:16px;line-height:1.4">Pregunta lo que quieras abajo o toca una pregunta. Lo que aceptes entra en tu pieza.</p>
+<p style="margin:0 0 14px;font-size:15px;line-height:1.4;color:var(--grey)">Toca una pregunta o escribe la tuya abajo. Lo que añadas entra en tu pieza.</p>
 <button class="btn" data-tab="original" style="text-align:left;background:var(--white);padding:10px 12px;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;min-height:0"><span class="lab" style="font-size:10px">lo que te llegó · toca para verlo frase a frase</span><span style="font-size:14px;font-weight:500;line-height:1.45">${originalHTML(P, true, false)}</span></button>
 <div style="background:var(--ink);color:var(--paper);padding:14px 16px;display:flex;flex-direction:column;gap:6px"><span class="lab">en una frase</span><span style="font-size:21px;line-height:1.08;font-weight:700;letter-spacing:-.02em">${esc(plano(P.portada.neutro))}</span></div>
 ${P.orden.filter(k => M.PREGUNTA[k] || (P.N[k] && esta(P.mapa, k))).map(k => {
@@ -284,30 +284,38 @@ ${P.orden.filter(k => M.PREGUNTA[k] || (P.N[k] && esta(P.mapa, k))).map(k => {
     } else {
       const d = diapos();
       const c = P.consumo;
-      body = `<div class="pad" style="display:flex;flex-direction:column;gap:14px">
-<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:600">largo</span><div class="seg" role="group" aria-label="largo">${[['corta', 'Corta'], ['media', 'Media'], ['entera', 'Entera']].map(([k, l]) => `<button class="btn ${P.largo === k ? 'on' : ''}" aria-pressed="${P.largo === k}" data-largo="${k}">${l}</button>`).join('')}</div></div>
-<div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:13px;font-weight:600">tono</span><div class="seg" role="group" aria-label="tono">${[['neutro', 'Neutro'], ['complice', 'Cómplice'], ['seco', 'Seco']].map(([k, l]) => `<button class="btn ${P.tono === k ? 'on' : ''}" aria-pressed="${P.tono === k}" data-tono="${k}">${l}</button>`).join('')}</div></div>
-<div style="background:var(--paper);border:2px solid var(--ink);padding:16px 18px;display:flex;flex-direction:column;gap:10px">
-<div style="display:flex;justify-content:space-between;align-items:center">${logo(15)}<span style="font-size:12px">1/${d.length}</span></div>
-<span style="font-size:13px;line-height:1.45">${originalHTML(P, true, false)}</span>
-<span style="font-size:12px;margin-top:6px">en una frase</span>
-<span style="font-size:28px;line-height:1.06;font-weight:700;letter-spacing:-.02em">${resaltar(P.portada[P.tono])}</span>
-<span style="border-top:1.5px solid var(--ink);padding-top:6px;font-size:11px">${garantia(true)}</span>
-</div>
-<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span class="lab">${P.largo === 'corta' ? 'corta' : P.largo === 'media' ? 'media' : 'entera'} · ${d.length} imágenes</span><span class="small" style="font-size:12px">${P.largo === 'corta' ? 'para un grupo de WhatsApp' : P.largo === 'media' ? 'con el detalle frase a frase' : 'una imagen por frase y todas tus preguntas'}</span></div>
-<ol class="list" style="margin:0;padding:0;list-style:none">${d.map((k, i) => `<li style="display:grid;grid-template-columns:26px minmax(0,1fr);font-size:15px;font-weight:600"><span>${i + 1}</span><span>${esc(titDiapo(P, k))}</span></li>`).join('')}</ol>
-${P.largo !== 'corta' && P.mapa.filter(k => k !== 'also' && P.N[k] && !esta(P.fuera, k)).length === 0 ? '<p class="small" style="margin:0">Para alargarla más, añade preguntas en «Detrás».</p>' : ''}
+      const nLargo = k => diapos(Object.assign({}, P, { largo: k })).length;
+      const LARGOS = [['corta', 'Corta', 'Lo esencial. Para un grupo de WhatsApp.'], ['media', 'Media', 'Añade el mensaje revisado frase a frase' + (P.mapa.some(k => k !== 'also' && P.N[k] && !esta(P.fuera, k)) ? ' y hasta 2 preguntas.' : '.')], ['entera', 'Entera', 'Una imagen por frase y todas tus preguntas.']];
+      const TONOS = [['neutro', 'Neutro'], ['complice', 'Cómplice'], ['seco', 'Seco']];
+      body = `<div style="display:flex;flex-direction:column;gap:22px;padding:18px 0 24px">
+<section style="display:flex;flex-direction:column;gap:10px">
+<div style="padding:0 20px;display:flex;justify-content:space-between;align-items:baseline;gap:10px"><h2 style="margin:0;font-size:22px;letter-spacing:-.02em">Así la verá tu grupo</h2><span class="small" aria-live="polite"><b style="color:var(--ink)">${d.length} imágenes</b> · desliza</span></div>
+<div class="slides" id="slides">${slidesHTML(P).map(x => `<div class="slidebox">${x}</div>`).join('')}</div>
+</section>
+<section class="pad" style="padding-top:0;padding-bottom:0;display:flex;flex-direction:column" role="radiogroup" aria-label="largo">
+<span class="lab" style="margin-bottom:8px">largo</span>
+${LARGOS.map(([k, l, txt]) => `<button class="opt ${P.largo === k ? 'on' : ''}" role="radio" aria-checked="${P.largo === k}" data-largo="${k}"><span class="dot" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:700">${l}</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${txt}</span></span><span style="font-size:13px;font-weight:600;white-space:nowrap">${nLargo(k)} img.</span></button>`).join('')}
+${P.largo !== 'corta' && !P.mapa.some(k => k !== 'also' && P.N[k] && !esta(P.fuera, k)) ? '<button class="btn" data-tab="mapa" style="border:0;padding:8px 0 0;min-height:0;text-align:left;font-size:13px;font-weight:500;text-decoration:underline;text-underline-offset:3px">Para alargarla con tus preguntas, añádelas en «Detrás».</button>' : ''}
+</section>
+<section class="pad" style="padding-top:0;padding-bottom:0;display:flex;flex-direction:column" role="radiogroup" aria-label="tono">
+<span class="lab" style="margin-bottom:8px">tono de la portada</span>
+${TONOS.map(([k, l]) => `<button class="opt ${P.tono === k ? 'on' : ''}" role="radio" aria-checked="${P.tono === k}" data-tono="${k}"><span class="dot" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:12px;font-weight:600;color:var(--grey)">${l}</span><span style="font-size:16px;line-height:1.25;font-weight:600">${esc(plano(P.portada[k]))}</span></span><span></span></button>`).join('')}
+</section>
+<div class="pad" style="padding-top:0;padding-bottom:0;display:flex;flex-direction:column;gap:8px">
+${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
+${S.enlace ? `<p class="small" style="margin:0;word-break:break-all">Enlace copiado: ${esc(S.enlace.slice(0, 70))}…</p>` : ''}
+<p class="small" style="margin:0;line-height:1.45">Se comparten las imágenes y un enlace. Quien lo abra ve todo lo comprobado, con sus fuentes.</p>
 ${P.demo ? '<p class="small" style="margin:0">Ejemplo con respuestas preparadas y comprobadas a mano.</p>' : M.modo() === 'invitado' ? `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} de fuentes.</p>` : `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} (${(c.busquedas / 100).toFixed(2).replace('.', ',')} $) y ha procesado unos ${Math.round(c.entrada / 1000)}.000 tokens.</p>`}
+</div>
 </div>`;
     }
     const bar = S.tab === 'pieza' ?
-      `<div class="bar" style="flex-direction:row"><button class="btn dark" data-go="envio" style="flex:1 1 auto;min-height:50px">Ver y enviar</button></div>` :
+      `<div class="bar" style="flex-direction:row"><button class="btn dark" data-compartir ${S.exportando ? 'disabled' : ''} style="flex:1 1 auto;min-height:50px">${S.exportando ? '<span class="think">Preparando…</span>' : (navigator.canShare && navigator.share ? 'Compartir' : 'Descargar') + ' ' + diapos().length + ' imágenes'}</button><button class="btn" data-copiar style="min-height:50px">Copiar enlace</button></div>` :
       `<div class="bar">
-<form id="fq" style="display:flex;gap:8px"><label for="q" class="sr">Pregunta con tus palabras</label><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="Pregunta con tus palabras"><button class="btn dark" type="submit" style="min-height:46px">Preguntar</button></form>
-<div class="chips">${P.orden.filter(k => M.PREGUNTA[k]).map(k => `<button class="btn ${esta(P.mapa, k) && P.N[k] ? 'done' : ''}" data-q="${k}">${esc(M.PREGUNTA[k])}</button>`).join('')}</div>
+<form id="fq" style="display:flex;gap:8px"><label for="q" class="sr">Pregunta lo que quieras sobre esto</label><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="Escribe tu pregunta"><button class="btn dark" type="submit" style="min-height:46px">Preguntar</button></form>
 </div>`;
-    return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0"><button class="btn" data-go="inicio" style="border:0;padding:0;min-height:0" aria-label="Inicio">${logo(22)}</button><span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div><span class="small" style="font-size:12px;white-space:nowrap">${P.mapa.filter(k => P.N[k]).length} en el mapa</span></header>
-${tabsHTML()}<main style="border-top:2px solid var(--ink)">${body}</main>${bar}${hojaHTML()}`;
+    return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0"><button class="btn" data-go="inicio" style="border:0;padding:0;min-height:0" aria-label="Inicio">${logo(22)}</button><span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div><span class="small" style="font-size:12px;white-space:nowrap">${diapos().length} imágenes</span></header>
+${tabsHTML()}<main>${body}</main>${bar}${hojaHTML()}`;
   }
 
   function hojaHTML() {
@@ -378,7 +386,7 @@ ${P.alsoSlide.sub ? `<span style="margin-top:40px;font-size:40px;line-height:1.2
   }
   function escalar() {
     const box = document.getElementById('slides'); if (!box) return;
-    const w = Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
+    const w = S.paso === 'compo' ? Math.min(260, Math.round((app.clientWidth || 360) * 0.64)) : Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
     box.querySelectorAll('.slidebox').forEach(b => { b.style.width = w + 'px'; b.style.height = Math.round(w * 1.25) + 'px'; b.firstChild.style.transform = 'scale(' + (w / 1080) + ')'; });
   }
 
@@ -480,8 +488,8 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     q('[data-q]', b => b.onclick = () => preguntarTipo(b.dataset.q, '¿' + M.PREGUNTA[b.dataset.q].charAt(1).toUpperCase() + M.PREGUNTA[b.dataset.q].slice(2)));
     q('[data-ver]', b => b.onclick = () => { const k = b.dataset.ver; set({ hoja: { k, pregunta: S.P.N[k].q, nodo: S.P.N[k], ya: true } }); });
     q('[data-toggle]', b => b.onclick = () => { const k = b.dataset.toggle, P = S.P; P.fuera = esta(P.fuera, k) ? P.fuera.filter(z => z !== k) : P.fuera.concat([k]); guardaP(); render(); });
-    q('[data-largo]', b => b.onclick = () => { S.P.largo = b.dataset.largo; guardaP(); render(); });
-    q('[data-tono]', b => b.onclick = () => { S.P.tono = b.dataset.tono; guardaP(); render(); });
+    q('[data-largo]', b => b.onclick = () => { const y = window.scrollY; S.P.largo = b.dataset.largo; S.enlace = ''; guardaP(); render(); window.scrollTo(0, y); });
+    q('[data-tono]', b => b.onclick = () => { const y = window.scrollY; S.P.tono = b.dataset.tono; S.enlace = ''; guardaP(); render(); window.scrollTo(0, y); });
     q('[data-accept]', b => b.onclick = () => { const h = S.hoja, P = S.P; P.N[h.k] = h.nodo; if (!esta(P.mapa, h.k)) P.mapa.push(h.k); if (!esta(P.orden, h.k)) P.orden.push(h.k); P.fuera = P.fuera.filter(z => z !== h.k); guardaP(); set({ hoja: null, tab: 'mapa' }); });
     q('[data-close]', b => b.onclick = () => set({ hoja: null }));
     q('[data-cancelar]', b => b.onclick = () => { if (ctrl) ctrl.abort(); });
@@ -490,7 +498,7 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     q('[data-copiar]', b => b.onclick = async () => {
       if (S.P.demo) { S.enlace = ''; b.textContent = 'Los ejemplos no tienen enlace'; return; }
       const u = enlaceDe(S.P); S.enlace = u;
-      try { await navigator.clipboard.writeText(u); b.textContent = 'Enlace copiado'; } catch (e) { render(); }
+      try { await navigator.clipboard.writeText(u); b.textContent = 'Copiado'; } catch (e) { render(); }
     });
     q('[data-quitaimg]', b => b.onclick = () => { S.entrada.imagen = null; render(); });
     const bg = app.querySelector('[data-close-bg]'); if (bg && !(S.hoja && S.hoja.cargando)) bg.onclick = e => { if (e.target === bg) set({ hoja: null }); };
@@ -529,7 +537,7 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
   }
 
   document.addEventListener('keydown', e => { if (e.key === 'Escape' && S.hoja && !S.hoja.cargando) set({ hoja: null }); });
-  window.addEventListener('resize', () => { if (S.paso === 'envio' || S.paso === 'vista') escalar(); });
+  window.addEventListener('resize', () => { if (S.paso === 'envio' || S.paso === 'vista' || (S.paso === 'compo' && S.tab === 'pieza')) escalar(); });
   window.addEventListener('hashchange', () => { const P = leerEnlace(); if (P) set({ paso: 'vista', vista: P }); });
 
   // ---------- arranque ----------
