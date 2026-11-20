@@ -171,6 +171,7 @@
     app.innerHTML = f();
     bind();
     if (S.paso === 'envio' || S.paso === 'vista' || (S.paso === 'compo' && S.tab === 'pieza')) escalar();
+    if (S.paso === 'compo' && S.tab === 'pieza' && S.P && (!fichasListas(S.P) || !enlaceListo(S.P)) && !preparando) programarPreparar();
   }
 
   function vInicio() {
@@ -311,15 +312,17 @@ ${TONOS.map(([k, l]) => `<button class="opt ${P.tono === k ? 'on' : ''}" role="r
 </section>
 <div class="pad" style="padding-top:0;padding-bottom:0;display:flex;flex-direction:column;gap:8px">
 ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
+${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fichas.files)) ? alternativasHTML(P) : ''}
 ${P.demo ? '' : `<button class="opt ${P.conEnlace ? 'on' : ''}" role="switch" aria-checked="${!!P.conEnlace}" data-conenlace style="margin-top:0"><span class="sw" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:16px;font-weight:700">Añadir un enlace con las fuentes</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${P.conEnlace ? 'Irá un enlace corto debajo de las fichas.' : 'Desactivado: solo se comparten las fichas.'}</span></span><span></span></button>
-${P.conEnlace ? `<div style="display:flex;gap:8px;align-items:center;min-height:44px">${S.corto && S.corto.cargando ? '<span class="small think">Creando el enlace…</span>' : S.corto && S.corto.error ? `<span class="small" style="color:var(--ink)">${esc(S.corto.error)}</span>` : S.corto && S.corto.url ? `<span style="flex:1 1 auto;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(S.corto.url.replace(/^https:\/\//, ''))}</span><button class="btn" data-copiar style="min-height:40px;font-size:14px">Copiar</button>` : '<span class="small">El enlace se crea al compartir.</span>'}</div>` : ''}`}
+${P.conEnlace ? `<div style="display:flex;gap:8px;align-items:center;min-height:44px">${S.corto && S.corto.error ? `<span class="small" style="color:var(--ink)">${esc(S.corto.error)}</span>` : enlaceListo(P) && P.corto ? `<span style="flex:1 1 auto;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(P.corto.url.replace(/^https:\/\//, ''))}</span><button class="btn" data-copiar style="min-height:40px;font-size:14px">Copiar</button>` : '<span class="small think">Creando el enlace…</span>'}</div>` : ''}`}
 ${P.demo ? '<p class="small" style="margin:0">Ejemplo con respuestas preparadas y comprobadas a mano.</p>' : M.modo() === 'invitado' ? `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} de fuentes.</p>` : `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} (${(c.busquedas / 100).toFixed(2).replace('.', ',')} $) y ha procesado unos ${Math.round(c.entrada / 1000)}.000 tokens.</p>`}
 </div>
 </div>`;
     
     }
     const bar = S.tab === 'pieza' ?
-      `<div class="bar" style="flex-direction:row"><button class="btn dark" data-compartir ${S.exportando ? 'disabled' : ''} style="flex:1 1 auto;min-height:52px;font-size:16px">${S.exportando ? '<span class="think">Preparando…</span>' : (navigator.canShare && navigator.share ? 'Compartir' : 'Descargar') + ' ' + (diapos().length === 1 ? 'la ficha' : 'las ' + diapos().length + ' fichas') + (P.conEnlace && !P.demo ? ' y el enlace' : '')}</button></div>` :
+      `<div class="bar" style="flex-direction:row">${(() => { const listo = fichasListas(P) && enlaceListo(P), n = diapos().length, que = (n === 1 ? 'la ficha' : 'las ' + n + ' fichas') + (P.conEnlace && !P.demo && !(S.corto && S.corto.error) ? ' y el enlace' : '');
+        return listo ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px">${S.quiere ? 'Listo: compartir ' : 'Compartir '}${que}</button>` : `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Preparando ${que}…</span></button>`; })()}</div>` :
       `<div class="bar" style="flex-direction:row"><button class="btn dark" data-tab="pieza" style="flex:1 1 auto;min-height:52px;font-size:16px">Siguiente: tu ficha →</button></div>`;
     return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0">${logoBtn(22)}<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div></header>
 ${pasosHTML()}<main>${body}</main>${bar}${hojaHTML()}`;
@@ -479,29 +482,81 @@ ${S.enlace ? `<p class="small" style="margin:0;word-break:break-all">${esc(S.enl
     if (S.paso === 'compo') render();
   }
 
-  async function exportar() {
-    const P = S.P; set({ exportando: true, error: '' });
+  // ---------- fichas preparadas de antemano ----------
+  // El móvil solo deja abrir «compartir» justo después del toque, así que las imágenes
+  // y el enlace se preparan antes y el botón comparte al instante.
+  const firmaFichas = P => firma({ d: diapos(P), m: piezaMin(P) });
+  const enlaceListo = P => !P.conEnlace || P.demo || (S.corto && S.corto.error) || (P.corto && P.corto.firma === firma(piezaMin(P)));
+  const fichasListas = P => !!(S.fichas && S.fichas.firma === firmaFichas(P));
+  async function generarFichas(P) {
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+    const cont = document.getElementById('export'); cont.innerHTML = slidesHTML(P).join('');
+    const files = [], nodos = Array.from(cont.children);
+    for (let i = 0; i < nodos.length; i++) {
+      const canvas = await window.html2canvas(nodos[i], { scale: 1, width: 1080, height: 1350, backgroundColor: null, logging: false });
+      const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
+      files.push(new File([blob], 'andalso-' + (i + 1) + '.png', { type: 'image/png' }));
+    }
+    cont.innerHTML = '';
+    return files;
+  }
+  let prepTimer = null, preparando = false, otraVez = false;
+  function programarPreparar() { clearTimeout(prepTimer); prepTimer = setTimeout(preparar, 250); }
+  async function preparar() {
+    if (preparando) { otraVez = true; return; }
+    const P = S.P; if (!P || S.paso !== 'compo' || S.tab !== 'pieza') return;
+    preparando = true; otraVez = false;
     try {
-      if (document.fonts && document.fonts.ready) await document.fonts.ready;
-      const cont = document.getElementById('export'); cont.innerHTML = slidesHTML(P).join('');
-      const files = [];
-      const nodos = Array.from(cont.children);
-      for (let i = 0; i < nodos.length; i++) {
-        const canvas = await window.html2canvas(nodos[i], { scale: 1, width: 1080, height: 1350, backgroundColor: null, logging: false });
-        const blob = await new Promise(r => canvas.toBlob(r, 'image/png'));
-        files.push(new File([blob], 'andalso-' + (i + 1) + '.png', { type: 'image/png' }));
+      const f = firmaFichas(P);
+      if (!fichasListas(P)) {
+        const files = await generarFichas(P);
+        if (S.fichas && S.fichas.urls) S.fichas.urls.forEach(u => URL.revokeObjectURL(u));
+        S.fichas = { firma: f, files, urls: files.map(x => URL.createObjectURL(x)) };
       }
-      cont.innerHTML = '';
-      let url = '';
-      if (P.conEnlace && !P.demo) { try { url = await enlaceCorto(); S.corto = { url }; } catch (e) { S.corto = { error: (e && e.mensaje) || 'No he podido crear el enlace.' }; } }
-      const datos = url ? { files, text: url } : { files };
-      if (navigator.canShare && navigator.canShare(datos)) {
-        try { await navigator.share(datos); } catch (e) { if (e && e.name !== 'AbortError') throw e; }
-      } else {
-        files.forEach(f => { const a = document.createElement('a'); a.href = URL.createObjectURL(f); a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(a.href), 4000); });
+      if (P.conEnlace && !P.demo && !enlaceListo(P)) {
+        try { const url = await enlaceCorto(); S.corto = { url }; } catch (e) { S.corto = { error: (e && e.mensaje) || 'No he podido crear el enlace.' }; }
       }
-      set({ exportando: false });
-    } catch (e) { set({ exportando: false, error: 'No he podido preparar las imágenes en este navegador.' }); }
+    } catch (e) { S.error = 'No he podido preparar las imágenes en este navegador.'; }
+    preparando = false;
+    if (otraVez || (S.P && S.fichas && S.fichas.firma !== firmaFichas(S.P))) { programarPreparar(); }
+    if (S.paso === 'compo' && S.tab === 'pieza') { const y = window.scrollY; render(); window.scrollTo(0, y); }
+  }
+  const puedeCompartirFicheros = files => !!(navigator.canShare && navigator.share && files && navigator.canShare({ files }));
+
+  function exportar() {
+    // sin esperas antes de navigator.share: tiene que ir pegado al toque
+    const P = S.P;
+    if (!fichasListas(P) || !enlaceListo(P)) { S.quiere = true; render(); programarPreparar(); return; }
+    S.quiere = false;
+    const files = S.fichas.files, url = P.conEnlace && !P.demo && P.corto && P.corto.firma === firma(piezaMin(P)) ? P.corto.url : '';
+    let datos = url ? { files, text: url } : { files };
+    if (url && !(navigator.canShare && navigator.canShare(datos))) datos = { files };
+    if (puedeCompartirFicheros(files)) {
+      navigator.share(datos).catch(e => { if (e && e.name !== 'AbortError') { S.alternativas = true; S.error = 'El móvil no ha dejado compartir. Usa una de estas opciones.'; render(); } });
+    } else { S.alternativas = true; S.error = ''; render(); }
+  }
+  function descargar() {
+    if (!S.fichas) return;
+    S.fichas.files.forEach((f, i) => { const a = document.createElement('a'); a.href = S.fichas.urls[i]; a.download = f.name; document.body.appendChild(a); a.click(); a.remove(); });
+  }
+  async function copiarImagen(i, b) {
+    try {
+      await navigator.clipboard.write([new window.ClipboardItem({ 'image/png': S.fichas.files[i] })]);
+      b.textContent = 'Copiada: pégala en el chat';
+    } catch (e) { b.textContent = 'No se puede copiar aquí: mantenla pulsada'; }
+  }
+  function alternativasHTML(P) {
+    if (!S.fichas) return '';
+    const url = P.conEnlace && !P.demo && P.corto ? P.corto.url : '';
+    const n = S.fichas.files.length;
+    return `<div class="card" style="display:flex;flex-direction:column;gap:12px">
+<span style="font-size:16px;font-weight:700">Otras formas de mandarla</span>
+<span style="font-size:14px;line-height:1.4">Mantén pulsada ${n === 1 ? 'la imagen' : 'una imagen'} para copiarla o guardarla en fotos. Si estás dentro de WhatsApp, Instagram o Gmail, abre esta página en Safari o Chrome para compartir con un toque.</span>
+<div style="display:flex;gap:8px;overflow-x:auto">${S.fichas.urls.map((u, i) => `<img src="${u}" alt="ficha ${i + 1}" style="width:${n === 1 ? 150 : 110}px;height:auto;border:2px solid var(--ink);flex:none">`).join('')}</div>
+${window.ClipboardItem && navigator.clipboard && navigator.clipboard.write ? `<button class="btn" data-copiaimg="0">${n === 1 ? 'Copiar la imagen' : 'Copiar la primera imagen'}</button>` : ''}
+${url ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Mandar el enlace por WhatsApp</a>` : ''}
+<button class="btn" data-descargar>${n === 1 ? 'Guardar la imagen' : 'Guardar las ' + n + ' imágenes'}</button>
+</div>`;
   }
 
   // ---------- vista de quien recibe el enlace ----------
@@ -535,7 +590,7 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     q('[data-demo]', b => b.onclick = () => abrirDemo(b.dataset.demo));
     q('[data-abrir]', b => b.onclick = () => { const p = store.lista().find(x => x.id === b.dataset.abrir); if (p) abrirPieza(p); });
     q('[data-borrar]', b => b.onclick = () => { store.borrar(b.dataset.borrar); render(); });
-    q('[data-tab]', b => b.onclick = () => { set({ tab: b.dataset.tab }); window.scrollTo(0, 0); });
+    q('[data-tab]', b => b.onclick = () => { set({ tab: b.dataset.tab, alternativas: false, quiere: false, error: '' }); window.scrollTo(0, 0); });
     q('[data-tramo]', b => b.onclick = () => set({ tramo: b.dataset.tramo, hoja: { tramo: b.dataset.tramo } }));
     q('[data-empieza]', b => b.onclick = () => { const t = document.getElementById('tin'); t.value = b.dataset.empieza; S.entrada.texto = t.value; t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
     q('[data-q]', b => b.onclick = () => preguntarTipo(b.dataset.q, '¿' + M.PREGUNTA[b.dataset.q].charAt(1).toUpperCase() + M.PREGUNTA[b.dataset.q].slice(2)));
@@ -548,7 +603,9 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     q('[data-cancelar]', b => b.onclick = () => { if (ctrl) ctrl.abort(); });
     q('[data-volver]', b => b.onclick = () => set({ paso: 'compo', tab: 'pieza', error: '' }));
     q('[data-compartir]', b => b.onclick = () => exportar());
-    q('[data-conenlace]', b => b.onclick = () => { const P = S.P; P.conEnlace = !P.conEnlace; guardaP(); if (P.conEnlace) prepararCorto(); else { S.corto = null; render(); } });
+    q('[data-descargar]', b => b.onclick = () => descargar());
+    q('[data-copiaimg]', b => b.onclick = () => copiarImagen(+b.dataset.copiaimg, b));
+    q('[data-conenlace]', b => b.onclick = () => { const P = S.P; P.conEnlace = !P.conEnlace; guardaP(); S.corto = null; render(); });
     q('[data-copiar]', b => b.onclick = async () => {
       if (S.P.demo) { S.enlace = ''; b.textContent = 'Los ejemplos no tienen enlace'; return; }
       let u = ''; try { u = await enlaceCorto(); } catch (e) { b.textContent = 'Sin enlace'; return; } S.enlace = u;
