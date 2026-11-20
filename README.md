@@ -26,6 +26,19 @@ Tiene que servirse por **https**: sin https no funcionan la instalación ni el m
 
 Sin clave se pueden probar los dos ejemplos (BBC y cinco golpes), con respuestas preparadas y comprobadas a mano.
 
+## Modo invitación (tu clave para todos, sin que nadie pague)
+
+La app puede usar una clave tuya escondida en un intermediario gratuito de Cloudflare. Quien abre el enlace de invitación no necesita clave ni cuenta.
+
+1. **Anthropic** (una vez): en https://console.anthropic.com añade saldo, pon un **tope de gasto mensual**, activa la **búsqueda web** y crea una clave.
+2. **Cloudflare** (una vez, gratis): crea un Worker, pega el contenido de `proxy/worker.js` y despliégalo. En los ajustes del Worker añade dos secretos:
+   - `ANTHROPIC_API_KEY`: tu clave.
+   - `CODIGO`: el código de invitación.
+3. Pon la dirección del Worker en `config.js` (`proxy: 'https://….workers.dev'`).
+4. Comparte el enlace con el código: `https://jrjulvez.github.io/andalso/?c=CODIGO`. La app lo guarda en el móvil y lo quita de la barra de direcciones.
+
+El intermediario solo acepta peticiones desde la web de la app y con el código; fuerza Sonnet o Haiku, un máximo de 6 búsquedas por llamada y de 6.000 tokens de respuesta. El tope de gasto de la consola es la protección final. Para cortar el acceso a todos, cambia el `CODIGO` en Cloudflare.
+
 ## Coste para el usuario
 
 - Leer un mensaje: hasta 6 búsquedas. Cada pregunta: hasta 6 más (2 la de «qué falta saber»).

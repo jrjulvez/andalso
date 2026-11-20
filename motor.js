@@ -15,8 +15,13 @@
     get clave() { try { return localStorage.getItem('aa_clave') || ''; } catch (e) { return ''; } },
     set clave(v) { try { v ? localStorage.setItem('aa_clave', v) : localStorage.removeItem('aa_clave'); } catch (e) {} },
     get modelo() { try { return localStorage.getItem('aa_modelo') || DEF.modelo; } catch (e) { return DEF.modelo; } },
-    set modelo(v) { try { localStorage.setItem('aa_modelo', v); } catch (e) {} }
+    set modelo(v) { try { localStorage.setItem('aa_modelo', v); } catch (e) {} },
+    get codigo() { try { return localStorage.getItem('aa_codigo') || ''; } catch (e) { return ''; } },
+    set codigo(v) { try { v ? localStorage.setItem('aa_codigo', v) : localStorage.removeItem('aa_codigo'); } catch (e) {} }
   };
+  const proxy = () => ((window.AA_CONFIG && window.AA_CONFIG.proxy) || '').trim();
+  // con clave propia se usa la clave; si no, la invitación (intermediario + código)
+  const modo = () => ajustes.clave ? 'clave' : (proxy() && ajustes.codigo ? 'invitado' : (proxy() ? 'falta_codigo' : 'sin_clave'));
 
   const hoy = () => new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'long', year: 'numeric' });
 
@@ -39,34 +44,34 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
 
   // ---------- llamada base ----------
   async function llamar({ sistema, mensajes, modelo, busquedas, maxTokens, señal }) {
-    const clave = ajustes.clave;
-    if (!clave) throw { codigo: 'sin_clave', mensaje: 'Falta tu clave de Anthropic. Ponla en Ajustes.' };
+    const m = modo();
+    if (m === 'sin_clave') throw { codigo: 'sin_clave', mensaje: 'Falta tu clave de Anthropic. Ponla en Ajustes.' };
+    if (m === 'falta_codigo') throw { codigo: 'sin_clave', mensaje: 'Abre and also desde el enlace de invitación que te han pasado.' };
     const cuerpo = { model: modelo || ajustes.modelo, max_tokens: maxTokens || 4000, system: sistema, messages: mensajes };
     if (busquedas) cuerpo.tools = [{ type: 'web_search_20250305', name: 'web_search', max_uses: busquedas }];
     let r;
     try {
-      r = await fetch(API, {
-        method: 'POST', signal: señal,
-        headers: {
-          'content-type': 'application/json', 'x-api-key': clave, 'anthropic-version': '2023-06-01',
-          'anthropic-dangerous-direct-browser-access': 'true'
-        },
-        body: JSON.stringify(cuerpo)
-      });
+      const cab = m === 'invitado'
+        ? { 'content-type': 'application/json', 'x-andalso-codigo': ajustes.codigo }
+        : { 'content-type': 'application/json', 'x-api-key': ajustes.clave, 'anthropic-version': '2023-06-01', 'anthropic-dangerous-direct-browser-access': 'true' };
+      r = await fetch(m === 'invitado' ? proxy() : API, { method: 'POST', signal: señal, headers: cab, body: JSON.stringify(cuerpo) });
     } catch (e) {
       if (e && e.name === 'AbortError') throw { codigo: 'cancelado', mensaje: 'Cancelado.' };
       throw { codigo: 'red', mensaje: 'No hay conexión con Anthropic. Revisa tu conexión y vuelve a probar.' };
     }
     let datos = null; try { datos = await r.json(); } catch (e) {}
     if (!r.ok) {
-      const m = (datos && datos.error && datos.error.message) || ('Error ' + r.status);
-      if (r.status === 401) throw { codigo: 'clave', mensaje: 'Tu clave no vale o ha caducado. Revísala en Ajustes.' };
-      if (r.status === 429) throw { codigo: 'limite', mensaje: 'Has llegado al límite de uso de tu cuenta por ahora. Espera un minuto.' };
+      const msg = (datos && datos.error && datos.error.message) || ('Error ' + r.status);
+      const tipo = datos && datos.error && datos.error.type;
+      if (tipo === 'codigo') throw { codigo: 'codigo', mensaje: 'Tu invitación no vale. Pide de nuevo el enlace a quien te lo pasó.' };
+      if (tipo === 'origen' || tipo === 'config') throw { codigo: 'config', mensaje: 'El intermediario de and also no está bien configurado. Avisa a quien te lo pasó.' };
+      if (r.status === 401) throw { codigo: 'clave', mensaje: m === 'invitado' ? 'La clave de la invitación ha dejado de funcionar. Avisa a quien te lo pasó.' : 'Tu clave no vale o ha caducado. Revísala en Ajustes.' };
+      if (r.status === 429) throw { codigo: 'limite', mensaje: m === 'invitado' ? 'Hay mucha gente usando la invitación ahora mismo. Espera un minuto y vuelve a probar.' : 'Has llegado al límite de uso de tu cuenta por ahora. Espera un minuto.' };
       if (r.status === 529 || r.status >= 500) throw { codigo: 'saturado', mensaje: 'La API está saturada ahora mismo. Vuelve a probar en un rato.' };
-      if (/web.?search/i.test(m)) throw { codigo: 'busqueda', mensaje: 'Tu cuenta no tiene activada la búsqueda web. Actívala en la consola de Anthropic (es un interruptor) y vuelve a probar.' };
-      if (/model/i.test(m)) throw { codigo: 'modelo', mensaje: 'Tu cuenta no tiene acceso a ese modelo. Elige otro en Ajustes.' };
-      if (/credit|balance|billing/i.test(m)) throw { codigo: 'saldo', mensaje: 'Tu cuenta de Anthropic no tiene saldo. Añade crédito en la consola.' };
-      throw { codigo: 'api', mensaje: m };
+      if (/web.?search/i.test(msg)) throw { codigo: 'busqueda', mensaje: 'Tu cuenta no tiene activada la búsqueda web. Actívala en la consola de Anthropic (es un interruptor) y vuelve a probar.' };
+      if (/model/i.test(msg)) throw { codigo: 'modelo', mensaje: 'Tu cuenta no tiene acceso a ese modelo. Elige otro en Ajustes.' };
+      if (/credit|balance|billing|spend/i.test(msg)) throw { codigo: 'saldo', mensaje: modo() === 'invitado' ? 'La invitación se ha quedado sin saldo este mes. Avisa a quien te lo pasó.' : 'Tu cuenta de Anthropic no tiene saldo. Añade crédito en la consola.' };
+      throw { codigo: 'api', mensaje: msg };
     }
     const texto = (datos.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
     const errBusqueda = (datos.content || []).find(b => b.type === 'web_search_tool_result' && b.content && b.content.type === 'web_search_tool_result_error');
@@ -211,5 +216,5 @@ Responde solo: <json>{"tipo":""}</json>`;
     return !!r;
   }
 
-  window.MOTOR = { leer, responder, interpretar, porPalabras, probarClave, ajustes, PREGUNTA, TIPOS, VERS, DEF };
+  window.MOTOR = { leer, responder, interpretar, porPalabras, probarClave, ajustes, modo, proxy, PREGUNTA, TIPOS, VERS, DEF };
 })();

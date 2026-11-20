@@ -88,7 +88,9 @@
   async function empezar() {
     const t = (S.entrada.texto || '').trim();
     if (!t && !S.entrada.imagen) { set({ error: 'Pega lo que te han mandado o sube una captura.' }); return; }
-    if (!M.ajustes.clave) { set({ paso: 'ajustes', aviso: 'Para leer tus propios mensajes, and also usa tu clave de Anthropic. Ponla aquí y vuelve.' }); return; }
+    const modo = M.modo();
+    if (modo === 'falta_codigo') { set({ error: 'Abre and also desde el enlace de invitación que te han pasado: lleva tu acceso dentro.' }); return; }
+    if (modo === 'sin_clave') { set({ paso: 'ajustes', aviso: 'Para leer tus propios mensajes, and also usa una clave de Anthropic. Ponla aquí y vuelve.' }); return; }
     ctrl = new AbortController();
     set({ paso: 'leyendo', error: '', cargando: { t0: Date.now() } });
     tic();
@@ -153,7 +155,7 @@
 
   function vInicio() {
     const piezas = store.lista();
-    const clave = !!M.ajustes.clave;
+    const modo = M.modo();
     return `<header class="top">${logo(24)}<button class="btn" data-go="ajustes" style="min-height:36px;font-size:13px">Ajustes</button></header>
 <main class="pad" style="display:flex;flex-direction:column;gap:16px">
 <h1 style="margin:10px 0 0;font-size:42px;line-height:.98;letter-spacing:-.035em;font-weight:700">Lo que te llega es una parte. Cuenta el ${hl('resto')}.</h1>
@@ -167,7 +169,7 @@ ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
 ${S.entrada.imagen ? '<button type="button" class="btn" data-quitaimg style="min-height:44px">Quitar</button>' : ''}
 </div>
 <button class="btn dark" type="submit" style="min-height:52px;font-size:16px">Ver lo que hay detrás</button>
-${clave ? '' : '<p class="small" style="margin:0">Para tus propios mensajes necesitas tu clave de Anthropic: la pones una vez en <button type="button" class="btn" data-go="ajustes" style="min-height:32px;font-size:13px;padding:0 8px">Ajustes</button> y se queda solo en este móvil.</p>'}
+${modo === 'sin_clave' ? '<p class="small" style="margin:0">Para tus propios mensajes necesitas una clave de Anthropic: la pones una vez en <button type="button" class="btn" data-go="ajustes" style="min-height:32px;font-size:13px;padding:0 8px">Ajustes</button> y se queda solo en este móvil.</p>' : ''}${modo === 'falta_codigo' ? '<p class="small" style="margin:0">Para usar tus propios mensajes, ábrelo desde el enlace de invitación que te han pasado. Mientras, prueba los ejemplos.</p>' : ''}
 </form>
 <div style="display:flex;flex-direction:column;gap:8px;border-top:2px solid var(--ink);padding-top:14px">
 <span class="lab">o pruébalo con un ejemplo</span>
@@ -185,8 +187,10 @@ ${piezas.length ? `<div style="display:flex;flex-direction:column;gap:8px;border
     const opciones = [['claude-sonnet-5-5', 'Sonnet 5.5 · equilibrado (recomendado)'], ['claude-opus-5-5', 'Opus 5.5 · más fino, más caro'], ['claude-haiku-5-5', 'Haiku 5.5 · rápido y barato']];
     return `<header class="top">${logo(22)}<button class="btn" data-go="inicio" style="min-height:36px;font-size:13px">Volver</button></header>
 <main class="pad" style="display:flex;flex-direction:column;gap:16px">
-<h1 style="margin:6px 0 0;font-size:30px;line-height:1.02;letter-spacing:-.025em">Tu IA, tu clave</h1>
+<h1 style="margin:6px 0 0;font-size:30px;line-height:1.02;letter-spacing:-.025em">${M.proxy() ? 'Ajustes' : 'Tu IA, tu clave'}</h1>
 ${S.aviso ? `<div class="aviso">${esc(S.aviso)}</div>` : ''}
+${M.proxy() ? `<div class="card" style="display:flex;flex-direction:column;gap:8px"><span class="lab">invitación</span><span style="font-size:16px;line-height:1.4">${M.ajustes.codigo ? 'Estás usando una invitación: no necesitas clave ni pagar nada. Pega un mensaje y listo.' : 'No tienes invitación en este móvil. Abre el enlace de invitación que te han pasado.'}</span>${M.ajustes.codigo ? '<button class="btn" type="button" data-borracodigo>Quitar la invitación de este móvil</button>' : ''}</div>
+<p class="small" style="margin:0">Si prefieres usar tu propia cuenta de Anthropic, pon tu clave abajo: tendrá prioridad sobre la invitación.</p>` : ''}
 <p style="margin:0;font-size:16px;line-height:1.45">and also no tiene servidor ni cobra nada. Usa tu cuenta de Anthropic: pagas tú lo que gastas, directamente, y nadie más ve tu clave.</p>
 <ol style="margin:0;padding-left:20px;font-size:15px;line-height:1.5;display:flex;flex-direction:column;gap:6px">
 <li>Entra en la consola de Anthropic (<a href="https://console.anthropic.com" target="_blank" rel="noopener">console.anthropic.com</a>) y añade algo de saldo. Con pocos euros da para muchas piezas.</li>
@@ -198,7 +202,7 @@ ${S.aviso ? `<div class="aviso">${esc(S.aviso)}</div>` : ''}
 <input id="cl" type="password" autocomplete="off" spellcheck="false" placeholder="${clave ? 'Guardada: ••••' + esc(clave.slice(-4)) : 'sk-ant-…'}">
 <label for="mo" class="lab">modelo</label>
 <select id="mo">${opciones.map(([v, l]) => `<option value="${v}" ${v === mod ? 'selected' : ''}>${l}</option>`).join('')}</select>
-<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn dark" type="submit" style="flex:1 1 auto">Guardar</button><button class="btn" type="button" data-probar ${clave ? '' : 'disabled'}>Probar la clave</button></div>
+<div style="display:flex;gap:8px;flex-wrap:wrap"><button class="btn dark" type="submit" style="flex:1 1 auto">Guardar</button><button class="btn" type="button" data-probar ${M.modo() === 'clave' || M.modo() === 'invitado' ? '' : 'disabled'}>${M.modo() === 'invitado' ? 'Probar la conexión' : 'Probar la clave'}</button></div>
 ${clave ? '<button class="btn" type="button" data-borraclave>Borrar la clave de este móvil</button>' : ''}
 <p id="estado" class="small" aria-live="polite" style="margin:0"></p>
 </form>
@@ -276,7 +280,7 @@ ${P.orden.map(k => {
 <span style="border-top:1.5px solid var(--ink);padding-top:6px;font-size:11px">${garantia(true)}</span>
 </div>
 <ol class="list" style="margin:0;padding:0;list-style:none">${d.map((k, i) => `<li style="display:grid;grid-template-columns:26px minmax(0,1fr);font-size:15px;font-weight:600"><span>${i + 1}</span><span>${k === 'portada' ? 'Portada · en una frase' : k === 'enlace' ? 'Enlace · todo lo comprobado' : DTIT[k] + ' · ' + esc(P.N[k].titulo)}</span></li>`).join('')}</ol>
-${P.demo ? '<p class="small" style="margin:0">Ejemplo con respuestas preparadas y comprobadas a mano.</p>' : `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} (${(c.busquedas / 100).toFixed(2).replace('.', ',')} $) y ha procesado unos ${Math.round(c.entrada / 1000)}.000 tokens.</p>`}
+${P.demo ? '<p class="small" style="margin:0">Ejemplo con respuestas preparadas y comprobadas a mano.</p>' : M.modo() === 'invitado' ? `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} de fuentes.</p>` : `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} (${(c.busquedas / 100).toFixed(2).replace('.', ',')} $) y ha procesado unos ${Math.round(c.entrada / 1000)}.000 tokens.</p>`}
 </div>`;
     }
     const bar = S.tab === 'pieza' ?
@@ -470,9 +474,10 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     };
     q('[data-probar]', b => b.onclick = async () => {
       const est = document.getElementById('estado'); est.textContent = 'Probando…';
-      try { await M.probarClave(); est.textContent = 'Funciona. Recuerda tener activada la búsqueda web.'; } catch (e) { est.textContent = (e && e.mensaje) || 'No funciona.'; }
+      try { await M.probarClave(); est.textContent = M.modo() === 'invitado' ? 'Funciona. Ya puedes pegar un mensaje.' : 'Funciona. Recuerda tener activada la búsqueda web.'; } catch (e) { est.textContent = (e && e.mensaje) || 'No funciona.'; }
     });
     q('[data-borraclave]', b => b.onclick = () => { M.ajustes.clave = ''; render(); });
+    q('[data-borracodigo]', b => b.onclick = () => { M.ajustes.codigo = ''; render(); });
     const sh = app.querySelector('.sheet'); if (sh) { const b = sh.querySelector('button'); if (b) b.focus(); }
   }
 
@@ -502,6 +507,8 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     if (P) { S.paso = 'vista'; S.vista = P; }
     else {
       const u = new URLSearchParams(location.search);
+      const cod = u.get('c');
+      if (cod && /^[A-Za-z0-9_-]{6,64}$/.test(cod)) { M.ajustes.codigo = cod; history.replaceState(null, '', location.pathname); }
       const t = [u.get('t') || u.get('text') || '', u.get('u') || u.get('url') || ''].filter(Boolean).join(' ').trim();
       if (t) { S.entrada.texto = t; history.replaceState(null, '', location.pathname); }
     }
