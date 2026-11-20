@@ -57,7 +57,7 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
       r = await fetch(m === 'invitado' ? proxy() : API, { method: 'POST', signal: señal, headers: cab, body: JSON.stringify(cuerpo) });
     } catch (e) {
       if (e && e.name === 'AbortError') throw { codigo: 'cancelado', mensaje: 'Cancelado.' };
-      throw { codigo: 'red', mensaje: 'No hay conexión con Anthropic. Revisa tu conexión y vuelve a probar.' };
+      throw { codigo: 'red', mensaje: m === 'invitado' ? 'No llego al servidor de and also. Si hay fútbol, algunas operadoras bloquean Cloudflare durante los partidos: prueba a cambiar de wifi a datos (o al revés) o vuelve cuando acabe el partido.' : 'No hay conexión con Anthropic. Revisa tu conexión y vuelve a probar.' };
     }
     let datos = null; try { datos = await r.json(); } catch (e) {}
     if (!r.ok) {
@@ -251,7 +251,7 @@ Responde solo: <json>{"tipo":""}</json>`;
     if (!proxy()) throw { tipo: 'sin_almacen', mensaje: 'El enlace corto necesita el intermediario.' };
     let r;
     try { r = await fetch(proxy().replace(/\/$/, '') + '/p', { method: 'POST', headers: { 'content-type': 'application/json', 'x-andalso-codigo': ajustes.codigo || '' }, body: JSON.stringify(obj) }); }
-    catch (e) { throw { tipo: 'red', mensaje: 'No hay conexión para crear el enlace.' }; }
+    catch (e) { throw { tipo: 'red', mensaje: 'No llego al servidor para crear el enlace. Si hay fútbol, puede estar bloqueado un rato. Las fichas se comparten igual.' }; }
     let d = {}; try { d = await r.json(); } catch (e) {}
     if (r.ok && d.id) return d.id;
     const t = d.error && d.error.type;
