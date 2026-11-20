@@ -6,6 +6,7 @@
   const MK = { 'es así': 'es', 'a medias': 'medias', 'no es así': 'no', 'sin fuente': 'sin', 'dicho': 'dicho' };
   const EST = { 'es así': 'solid', 'a medias': 'dotted', 'no es así': 'solid', 'sin fuente': 'dotted', 'dicho': 'dashed' };
   const DTIT = { also: 'also', relacion: 'Cadena', antes: 'Tiempo', normal: '¿Es lo normal?', dichos: 'Dichos', ami: '¿Y a mí?', falta: 'Qué falta saber' };
+  const titDiapo = (P, k) => k === 'portada' ? 'Portada · en una frase' : k === 'enlace' ? 'Enlace · todo lo comprobado' : k === 'frases' ? 'Frase a frase · lo que llegó, revisado' : /^f\d+$/.test(k) ? 'Frase ' + (+k.slice(1) + 1) + ' · ' + (P.tramos[P.original.filter(x => typeof x !== 'string')[+k.slice(1)].k] || {}).ver : (DTIT[k] || 'Tu pregunta') + ' · ' + P.N[k].titulo;
   const ORDEN = ['also', 'relacion', 'antes', 'normal', 'dichos', 'ami', 'falta'];
 
   const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -67,9 +68,10 @@
   function diapos(P) {
     P = P || S.P;
     const i = P.mapa.filter(k => !esta(P.fuera, k) && P.N[k]), resto = i.filter(k => k !== 'also');
+    // corta: lo esencial · media: + frase a frase y hasta 2 preguntas · entera: una imagen por frase + todas
     let d = ['portada']; if (esta(i, 'also')) d.push('also');
-    if (P.largo === 'media' && resto.length) d.push(resto[0]);
-    if (P.largo === 'entera') d = d.concat(resto);
+    if (P.largo === 'media') d = d.concat(['frases'], resto.slice(0, 2));
+    if (P.largo === 'entera') d = d.concat(P.original.filter(x => typeof x !== 'string').slice(0, 8).map((x, j) => 'f' + j), resto);
     d.push('enlace'); return d;
   }
   const originalHTML = (P, marcas, clic) => P.original.map(s => typeof s === 'string' ? esc(s) :
@@ -133,16 +135,29 @@
   async function preguntarTexto(texto) {
     texto = (texto || '').trim(); if (!texto) return;
     const P = S.P;
-    let tipo;
-    if (P.demo) tipo = M.porPalabras(texto);
-    else {
-      set({ hoja: { cargando: true, pregunta: texto, tipo: null } }); S.cargando = { t0: Date.now() };
-      try { const r = await M.interpretar(texto, P); tipo = r.tipo; sumaConsumo(r.consumo); }
-      catch (e) { set({ hoja: { error: (e && e.mensaje) || 'Algo ha fallado.', pregunta: texto } }); return; }
+    const inp = document.getElementById('q'); if (inp) inp.value = '';
+    if (P.demo) {
+      const tipo = M.porPalabras(texto);
+      if (tipo === 'verdad') { set({ tab: 'original', hoja: { verdad: true, pregunta: texto } }); return; }
+      if (tipo === 'ninguna' || !P.banco[P.alias[tipo] || tipo]) { set({ hoja: { ninguna: true, pregunta: texto, r: 'En este ejemplo solo están preparadas las preguntas de los botones. Con un mensaje tuyo, and also busca la respuesta a cualquier pregunta.' } }); return; }
+      preguntarTipo(tipo, texto); return;
     }
-    if (tipo === 'verdad') { set({ tab: 'original', hoja: { verdad: true, pregunta: texto } }); return; }
-    if (tipo === 'ninguna') { set({ hoja: { ninguna: true, pregunta: texto, r: 'No encuentro relación entre tu pregunta y lo que te ha llegado. No me la invento: queda fuera de la pieza.' } }); return; }
-    preguntarTipo(tipo, texto);
+    ctrl = new AbortController();
+    S.cargando = { t0: Date.now() };
+    set({ hoja: { cargando: true, pregunta: texto, tipo: null } }); tic();
+    try {
+      const r = await M.responderLibre(texto, P, ctrl.signal);
+      sumaConsumo(r.consumo); guardaP();
+      if (r.tipo === 'verdad') { set({ tab: 'original', hoja: { verdad: true, pregunta: texto } }); return; }
+      if (r.tipo === 'ninguna') { set({ hoja: { ninguna: true, pregunta: texto, r: r.r + ' No me la invento: queda fuera de la pieza.' } }); return; }
+      // una de las fijas que aún no está: ocupa su hueco; si no, va como pregunta tuya
+      let k = r.tipo;
+      if (k === 'libre' || (P.N[k] && esta(P.mapa, k))) { let n = 1; while (P.N['l' + n] || (S.hoja && S.hoja.k === 'l' + n)) n++; k = 'l' + n; }
+      set({ hoja: { k, pregunta: texto, nodo: r.nodo } });
+    } catch (e) {
+      if (e && e.codigo === 'cancelado') { set({ hoja: null }); return; }
+      set({ hoja: { error: (e && e.mensaje) || 'Algo ha fallado.', pregunta: texto } });
+    }
   }
 
   // ---------- pantallas ----------
@@ -254,7 +269,7 @@ ${P.avisoBusqueda ? '<div class="err" style="margin-bottom:12px">Alguna búsqued
 <p style="margin:0 0 14px;font-size:16px;line-height:1.4">Pregunta lo que quieras abajo o toca una pregunta. Lo que aceptes entra en tu pieza.</p>
 <button class="btn" data-tab="original" style="text-align:left;background:var(--white);padding:10px 12px;display:flex;flex-direction:column;gap:4px;margin-bottom:12px;min-height:0"><span class="lab" style="font-size:10px">lo que te llegó · toca para verlo frase a frase</span><span style="font-size:14px;font-weight:500;line-height:1.45">${originalHTML(P, true, false)}</span></button>
 <div style="background:var(--ink);color:var(--paper);padding:14px 16px;display:flex;flex-direction:column;gap:6px"><span class="lab">en una frase</span><span style="font-size:21px;line-height:1.08;font-weight:700;letter-spacing:-.02em">${esc(plano(P.portada.neutro))}</span></div>
-${P.orden.map(k => {
+${P.orden.filter(k => M.PREGUNTA[k] || (P.N[k] && esta(P.mapa, k))).map(k => {
         const n = P.N[k], on = esta(P.mapa, k) && !!n, dentro = on && !esta(P.fuera, k);
         const st = on ? EST[n.ver] : 'dotted', col = on ? 'var(--ink)' : 'var(--line)';
         return `<div class="row"><div class="spine" aria-hidden="true"><i style="border-left-style:${st};border-left-color:${col}"></i></div><div style="padding:12px 0 0">${on ?
@@ -279,7 +294,9 @@ ${P.orden.map(k => {
 <span style="font-size:28px;line-height:1.06;font-weight:700;letter-spacing:-.02em">${resaltar(P.portada[P.tono])}</span>
 <span style="border-top:1.5px solid var(--ink);padding-top:6px;font-size:11px">${garantia(true)}</span>
 </div>
-<ol class="list" style="margin:0;padding:0;list-style:none">${d.map((k, i) => `<li style="display:grid;grid-template-columns:26px minmax(0,1fr);font-size:15px;font-weight:600"><span>${i + 1}</span><span>${k === 'portada' ? 'Portada · en una frase' : k === 'enlace' ? 'Enlace · todo lo comprobado' : DTIT[k] + ' · ' + esc(P.N[k].titulo)}</span></li>`).join('')}</ol>
+<div style="display:flex;justify-content:space-between;align-items:baseline;gap:10px"><span class="lab">${P.largo === 'corta' ? 'corta' : P.largo === 'media' ? 'media' : 'entera'} · ${d.length} imágenes</span><span class="small" style="font-size:12px">${P.largo === 'corta' ? 'para un grupo de WhatsApp' : P.largo === 'media' ? 'con el detalle frase a frase' : 'una imagen por frase y todas tus preguntas'}</span></div>
+<ol class="list" style="margin:0;padding:0;list-style:none">${d.map((k, i) => `<li style="display:grid;grid-template-columns:26px minmax(0,1fr);font-size:15px;font-weight:600"><span>${i + 1}</span><span>${esc(titDiapo(P, k))}</span></li>`).join('')}</ol>
+${P.largo !== 'corta' && P.mapa.filter(k => k !== 'also' && P.N[k] && !esta(P.fuera, k)).length === 0 ? '<p class="small" style="margin:0">Para alargarla más, añade preguntas en «Detrás».</p>' : ''}
 ${P.demo ? '<p class="small" style="margin:0">Ejemplo con respuestas preparadas y comprobadas a mano.</p>' : M.modo() === 'invitado' ? `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} de fuentes.</p>` : `<p class="small" style="margin:0">Esta pieza ha hecho ${c.busquedas} búsqueda${c.busquedas === 1 ? '' : 's'} (${(c.busquedas / 100).toFixed(2).replace('.', ',')} $) y ha procesado unos ${Math.round(c.entrada / 1000)}.000 tokens.</p>`}
 </div>`;
     }
@@ -287,9 +304,9 @@ ${P.demo ? '<p class="small" style="margin:0">Ejemplo con respuestas preparadas 
       `<div class="bar" style="flex-direction:row"><button class="btn dark" data-go="envio" style="flex:1 1 auto;min-height:50px">Ver y enviar</button></div>` :
       `<div class="bar">
 <form id="fq" style="display:flex;gap:8px"><label for="q" class="sr">Pregunta con tus palabras</label><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="Pregunta con tus palabras"><button class="btn dark" type="submit" style="min-height:46px">Preguntar</button></form>
-<div class="chips">${P.orden.map(k => `<button class="btn ${esta(P.mapa, k) && P.N[k] ? 'done' : ''}" data-q="${k}">${esc(M.PREGUNTA[k])}</button>`).join('')}</div>
+<div class="chips">${P.orden.filter(k => M.PREGUNTA[k]).map(k => `<button class="btn ${esta(P.mapa, k) && P.N[k] ? 'done' : ''}" data-q="${k}">${esc(M.PREGUNTA[k])}</button>`).join('')}</div>
 </div>`;
-    return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0"><button class="btn" data-go="inicio" style="border:0;padding:0;min-height:0" aria-label="Inicio">${logo(22)}</button><span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div><span class="small" style="font-size:12px;white-space:nowrap">${P.mapa.filter(k => P.N[k]).length} de ${P.orden.length}</span></header>
+    return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0"><button class="btn" data-go="inicio" style="border:0;padding:0;min-height:0" aria-label="Inicio">${logo(22)}</button><span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div><span class="small" style="font-size:12px;white-space:nowrap">${P.mapa.filter(k => P.N[k]).length} en el mapa</span></header>
 ${tabsHTML()}<main style="border-top:2px solid var(--ink)">${body}</main>${bar}${hojaHTML()}`;
   }
 
@@ -334,6 +351,20 @@ ${tabsHTML()}<main style="border-top:2px solid var(--ink)">${body}</main>${bar}$
 <span style="margin-top:56px;font-size:${(P.alsoSlide.big || '').length > 90 ? 64 : 82}px;line-height:.97;font-weight:600;letter-spacing:-.035em">${esc(P.alsoSlide.big)}</span>
 ${P.alsoSlide.sub ? `<span style="margin-top:40px;font-size:40px;line-height:1.2;font-weight:500">${esc(P.alsoSlide.sub)}</span>` : ''}
 <span style="margin-top:auto;font-size:24px">${esc(P.alsoSlide.fuente)}</span>`);
+      if (k === 'frases') {
+        const tr = P.original.filter(s => typeof s !== 'string').slice(0, 6);
+        return slideWrap(n, tot, false, `<span style="margin-top:70px;font-size:26px">lo que llegó, frase a frase</span>
+<span style="margin-top:14px;font-size:84px;line-height:.95;font-weight:600;letter-spacing:-.035em">Cada frase, con su marca y su porqué.</span>
+<div style="margin-top:44px;display:flex;flex-direction:column;border-bottom:2px solid ${INK}">${tr.map(s => { const t = P.tramos[s.k]; return `<div style="padding:16px 0;border-top:2px solid ${INK};display:flex;flex-direction:column;gap:6px"><span style="font-size:${tr.length > 4 ? 30 : 36}px;line-height:1.25;font-weight:600">${mark(esc(s.t), t.ver)}</span><span style="font-size:${tr.length > 4 ? 22 : 26}px;line-height:1.3">${esc(t.ver)} · ${esc(t.porque)}</span></div>`; }).join('')}</div>`);
+      }
+      if (/^f\d+$/.test(k)) {
+        const trs = P.original.filter(x => typeof x !== 'string'), j = +k.slice(1), s = trs[j], t = P.tramos[s.k];
+        return slideWrap(n, tot, false, `<span style="margin-top:70px;font-size:26px">lo que llegó · frase ${j + 1} de ${trs.length}</span>
+<span style="margin-top:24px;font-size:${s.t.length > 120 ? 56 : 72}px;line-height:1.12;font-weight:600;letter-spacing:-.025em">${mark(esc(s.t), t.ver)}</span>
+<span style="margin-top:56px;font-size:30px;font-weight:600">${esc(t.ver)}</span>
+<span style="margin-top:14px;font-size:${(t.porque || '').length > 160 ? 34 : 42}px;line-height:1.22;font-weight:500">${esc(t.porque)}</span>
+<span style="margin-top:auto;font-size:24px">${esc(t.fuente || '')}</span>`);
+      }
       if (k === 'enlace') return slideWrap(n, tot, false, `<span style="margin-top:70px;font-size:26px">¿quieres bajar más?</span>
 <span style="margin-top:14px;font-size:100px;line-height:.92;font-weight:600;letter-spacing:-.035em">Todo lo comprobado, en el enlace.</span>
 <div style="margin-top:50px;display:flex;flex-direction:column;border-bottom:2px solid ${INK}">${P.mapa.filter(q => q !== 'also' && P.N[q] && !esta(P.fuera, q)).slice(0, 5).map(q => `<div style="padding:18px 0;border-top:2px solid ${INK};font-size:30px;font-weight:500">${esc(P.N[q].q)} · ${esc(P.N[q].titulo)}</div>`).join('') || `<div style="padding:18px 0;border-top:2px solid ${INK};font-size:30px;font-weight:500">frase a frase, con sus fuentes</div>`}</div>
@@ -368,7 +399,7 @@ ${P.alsoSlide.sub ? `<span style="margin-top:40px;font-size:40px;line-height:1.2
       // descartar tramos sin datos y valores raros
       P.original = P.original.filter(s => typeof s === 'string' || (s && typeof s.t === 'string' && P.tramos[s.k]));
       Object.values(P.tramos).forEach(t => { if (VERS.indexOf(t.ver) < 0) t.ver = 'sin fuente'; });
-      P.mapa = (P.mapa || []).filter(k => ORDEN.indexOf(k) >= 0 && P.N[k] && Array.isArray(P.N[k].items));
+      P.mapa = (P.mapa || []).filter(k => (ORDEN.indexOf(k) >= 0 || /^l\d{1,2}$/.test(k)) && P.N[k] && Array.isArray(P.N[k].items));
       P.fuera = []; P.largo = ['corta', 'media', 'entera'].indexOf(P.largo) >= 0 ? P.largo : 'corta';
       P.tono = ['neutro', 'complice', 'seco'].indexOf(P.tono) >= 0 ? P.tono : 'neutro';
       P.alsoSlide = P.alsoSlide || { big: '', sub: '', fuente: '' };
@@ -447,11 +478,11 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     q('[data-tab]', b => b.onclick = () => { set({ tab: b.dataset.tab }); window.scrollTo(0, 0); });
     q('[data-tramo]', b => b.onclick = () => set({ tramo: b.dataset.tramo }));
     q('[data-q]', b => b.onclick = () => preguntarTipo(b.dataset.q, '¿' + M.PREGUNTA[b.dataset.q].charAt(1).toUpperCase() + M.PREGUNTA[b.dataset.q].slice(2)));
-    q('[data-ver]', b => b.onclick = () => { const k = b.dataset.ver; set({ hoja: { k, pregunta: M.PREGUNTA[k], nodo: S.P.N[k], ya: true } }); });
+    q('[data-ver]', b => b.onclick = () => { const k = b.dataset.ver; set({ hoja: { k, pregunta: S.P.N[k].q, nodo: S.P.N[k], ya: true } }); });
     q('[data-toggle]', b => b.onclick = () => { const k = b.dataset.toggle, P = S.P; P.fuera = esta(P.fuera, k) ? P.fuera.filter(z => z !== k) : P.fuera.concat([k]); guardaP(); render(); });
     q('[data-largo]', b => b.onclick = () => { S.P.largo = b.dataset.largo; guardaP(); render(); });
     q('[data-tono]', b => b.onclick = () => { S.P.tono = b.dataset.tono; guardaP(); render(); });
-    q('[data-accept]', b => b.onclick = () => { const h = S.hoja, P = S.P; P.N[h.k] = h.nodo; if (!esta(P.mapa, h.k)) P.mapa.push(h.k); P.fuera = P.fuera.filter(z => z !== h.k); guardaP(); set({ hoja: null, tab: 'mapa' }); });
+    q('[data-accept]', b => b.onclick = () => { const h = S.hoja, P = S.P; P.N[h.k] = h.nodo; if (!esta(P.mapa, h.k)) P.mapa.push(h.k); if (!esta(P.orden, h.k)) P.orden.push(h.k); P.fuera = P.fuera.filter(z => z !== h.k); guardaP(); set({ hoja: null, tab: 'mapa' }); });
     q('[data-close]', b => b.onclick = () => set({ hoja: null }));
     q('[data-cancelar]', b => b.onclick = () => { if (ctrl) ctrl.abort(); });
     q('[data-volver]', b => b.onclick = () => set({ paso: 'compo', tab: 'pieza', error: '' }));

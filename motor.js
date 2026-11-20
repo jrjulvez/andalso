@@ -178,6 +178,34 @@ Busca y contesta. «respuesta»: 1–2 frases que se leen de un tirón. «titulo
     const peor = items.map(e => e.ver).sort((a, b) => rango(b) - rango(a))[0];
     return { nodo: { q: PREGUNTA[tipo], titulo: limpia(j.titulo) || items[0].t, ver: verOK(j.veredicto || peor), fuente: limpia(j.fuente) || items[0].f, r: limpia(j.respuesta), items }, consumo: r.consumo };
   }
+  // ---------- 2b. pregunta libre: una sola llamada que la entiende y la contesta ----------
+  async function responderLibre(pregunta, pieza, señal) {
+    const ctx = 'Lo que llegó: «' + pieza.original.map(s => typeof s === 'string' ? s : s.t).join('') + '»\nYa comprobado: ' +
+      Object.values(pieza.tramos).map(t => t.ver + ' — ' + t.porque).join(' | ');
+    const txt = `${ctx}
+
+PREGUNTA LIBRE de la persona: «${pregunta}»
+
+1. Decide qué es («tipo»):
+   also = qué más es verdad o qué no cuenta el mensaje · relacion = con qué tiene que ver, causas, conexiones · antes = qué pasó antes · normal = si es normal o raro · dichos = qué dice cada parte · ami = cómo le afecta en España · falta = qué no se sabe · verdad = si el propio mensaje es verdad · libre = cualquier otra pregunta relacionada con lo que llegó · ninguna = no tiene nada que ver con lo que llegó.
+2. Si es «verdad» o «ninguna», no busques: pon solo el tipo y una «respuesta» de una frase.
+3. Si no, busca y contesta a SU pregunta tal como la ha hecho. «titulo»: la respuesta en menos de 12 palabras. «respuesta»: 1–2 frases. «items»: 1–5 puntos con veredicto y fuente. «veredicto»: el del punto más débil. Si no encuentras fuente, dilo con «sin fuente»; no rellenes.
+
+<json>{"tipo":"","titulo":"","veredicto":"","fuente":"","respuesta":"","items":[{"texto":"","veredicto":"","fuente":"","url":""}]}</json>`;
+    const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: txt }], busquedas: DEF.busquedas, maxTokens: 3000, señal });
+    const j = sacarJSON(r.texto);
+    const tipo = (TIPOS.indexOf(j.tipo) >= 0 || ['libre', 'verdad', 'ninguna'].indexOf(j.tipo) >= 0) ? j.tipo : 'libre';
+    if (tipo === 'verdad') return { tipo, consumo: r.consumo };
+    if (tipo === 'ninguna') return { tipo, r: limpia(j.respuesta) || 'No encuentro relación entre tu pregunta y lo que te ha llegado.', consumo: r.consumo };
+    const items = (j.items || []).map(e => ({ t: limpia(e.texto), ver: verOK(e.veredicto), f: limpia(e.fuente) || '—', url: urlOK(e.url) })).filter(e => e.t).slice(0, 5);
+    if (!items.length) {
+      if (limpia(j.respuesta)) items.push({ t: limpia(j.respuesta), ver: 'sin fuente', f: 'sin fuente encontrada', url: '' });
+      else throw { codigo: 'formato', mensaje: 'La respuesta ha llegado vacía. Vuelve a probar.' };
+    }
+    const peor = items.map(e => e.ver).sort((a, b) => rango(b) - rango(a))[0];
+    const q = tipo === 'libre' ? '«' + pregunta.replace(/^[¿\s]+|[?\s]+$/g, '') + '»' : PREGUNTA[tipo];
+    return { tipo, nodo: { q, titulo: limpia(j.titulo) || items[0].t, ver: verOK(j.veredicto || peor), fuente: limpia(j.fuente) || items[0].f, r: limpia(j.respuesta), items }, consumo: r.consumo };
+  }
   function rango(v) { return { 'es así': 0, 'dicho': 1, 'a medias': 2, 'sin fuente': 3, 'no es así': 4 }[v] || 0; }
 
   // ---------- 3. entender una pregunta escrita ----------
@@ -212,9 +240,9 @@ Responde solo: <json>{"tipo":""}</json>`;
   }
 
   async function probarClave() {
-    const r = await llamar({ sistema: 'Responde solo «ok».', mensajes: [{ role: 'user', content: 'ok' }], modelo: DEF.rapido, maxTokens: 5 });
+    const r = await llamar({ sistema: 'Responde solo «ok».', mensajes: [{ role: 'user', content: 'ok' }], maxTokens: 5 });
     return !!r;
   }
 
-  window.MOTOR = { leer, responder, interpretar, porPalabras, probarClave, ajustes, modo, proxy, PREGUNTA, TIPOS, VERS, DEF };
+  window.MOTOR = { leer, responder, responderLibre, interpretar, porPalabras, probarClave, ajustes, modo, proxy, PREGUNTA, TIPOS, VERS, DEF };
 })();
