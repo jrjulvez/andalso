@@ -41,7 +41,7 @@ header.top{display:flex;align-items:center;justify-content:space-between;gap:10p
 .pad{padding:18px 20px 24px}
 .card{background:var(--white);border:2px solid var(--ink);padding:14px 16px}
 .tramo{padding:0;border:0;background:transparent;font:inherit;cursor:pointer;text-align:left}
-.tramo.sel{background:var(--fluo)}
+.tramo.sel{background:none}
 main{flex:1 1 auto}
 .bar{position:sticky;bottom:0;border-top:2px solid var(--ink);background:var(--white);padding:10px 16px calc(14px + env(safe-area-inset-bottom));display:flex;flex-direction:column;gap:8px;z-index:3}
 .chips{display:flex;gap:6px;overflow-x:auto;padding-bottom:2px}
@@ -56,7 +56,20 @@ main{flex:1 1 auto}
 .opt.on{border-color:var(--ink);z-index:1}
 .opt .dot{width:18px;height:18px;border:2px solid var(--ink);border-radius:50%}
 .opt.on .dot{background:var(--ink);box-shadow:inset 0 0 0 3px var(--white)}
+.opt .sw{width:20px;height:20px;border:2px solid var(--ink);background:var(--white)}
+.opt.on .sw{background:var(--ink);box-shadow:inset 0 0 0 4px var(--white)}
 .opt:focus-visible{outline:3px solid var(--ink);outline-offset:2px;z-index:2}
+.composer{display:flex;flex-direction:column;gap:12px;background:var(--white);border:2px solid var(--ink);padding:14px}
+.composer textarea{border:0;padding:2px 0;min-height:96px;background:transparent;font-size:18px;line-height:1.4;resize:none}
+.composer textarea:focus-visible,.composer input:focus-visible{outline:none}
+.composer:focus-within{box-shadow:0 0 0 3px var(--fluo)}
+.link{background:none;border:0;padding:6px 0;font:inherit;font-size:14px;font-weight:600;text-decoration:underline;text-underline-offset:3px;cursor:pointer;color:var(--ink)}
+.chip{background:var(--white);border:2px solid var(--ink);border-radius:999px;padding:8px 14px;font:inherit;font-size:14px;font-weight:600;cursor:pointer;color:var(--ink);min-height:40px}
+.chip:focus-visible,.link:focus-visible{outline:3px solid var(--ink);outline-offset:2px}
+.paso{display:grid;grid-template-columns:34px minmax(0,1fr);column-gap:12px;align-items:start}
+.paso .num{font-size:30px;font-weight:700;line-height:1;letter-spacing:-.03em}
+.paso h2{margin:0 0 4px;font-size:21px;line-height:1.1;letter-spacing:-.02em}
+.paso p{margin:0;font-size:15px;line-height:1.45;color:#D9D7D1}
 .row{display:grid;grid-template-columns:26px minmax(0,1fr);column-gap:10px}
 .spine{display:flex;justify-content:center}.spine i{width:0;border-left:3px solid var(--ink)}
 .sheetbg{position:fixed;inset:0;background:rgba(17,17,17,.45);display:flex;justify-content:center;align-items:flex-end;z-index:10}

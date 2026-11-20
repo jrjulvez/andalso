@@ -102,18 +102,19 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
       contenido.push({ type: 'image', source: { type: 'base64', media_type: entrada.imagen.tipo, data: entrada.imagen.datos } });
       contenido.push({ type: 'text', text: 'Esto es una captura que ha llegado a un grupo. Primero retecléala: copia solo el texto del mensaje o de la noticia, sin nombres de personas privadas, teléfonos, horas de chat ni interfaz.' + (entrada.texto ? '\nComentario de quien la comparte: ' + entrada.texto : '') });
     } else {
-      contenido.push({ type: 'text', text: 'Ha llegado esto a un grupo:\n«' + entrada.texto + '»' + (/https?:\/\//.test(entrada.texto) ? '\nSi es un enlace, busca esa noticia y trabaja con su titular y lo que afirma.' : '') });
+      contenido.push({ type: 'text', text: 'Esto es lo que ha escrito la persona. Puede ser un mensaje que le ha llegado (texto reenviado, titular, enlace) o una pregunta o duda suya escrita con sus palabras:\n«' + entrada.texto + '»' + (/https?:\/\//.test(entrada.texto) ? '\nSi es un enlace, busca esa noticia y trabaja con su titular y lo que afirma.' : '') });
     }
     contenido.push({ type: 'text', text: `Haz esto:
-1. «original»: el texto que ha llegado, retecleado tal cual (sin datos de personas privadas). Si es un enlace, el titular de la noticia.
+0. Decide si es un MENSAJE que le ha llegado o una PREGUNTA suya («¿es verdad que…?», «me han dicho que…», «¿por qué…?»). «es_pregunta»: true o false.
+1. «original»: si es un mensaje, el texto retecleado tal cual (sin datos de personas privadas); si es un enlace, el titular de la noticia. Si es una pregunta, lo que esa pregunta da por hecho, escrito como afirmaciones neutras en una a tres frases (por ejemplo «¿es verdad que la luz ha subido un 30 % por los impuestos?» → «La luz ha subido un 30 %. Es por los impuestos.»). Si no da nada por hecho, escribe la idea de fondo que se suele oír sobre ese tema, sin inventar cifras.
 2. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto» debe ser un trozo LITERAL del original. Para cada una busca y da veredicto, «porque» (una frase) y la fuente.
 3. «also»: el hecho comprobado que más amplía lo que llegó, lo que también es verdad y el mensaje no cuenta. Mejor si tiene un número que da contexto. Nunca uno inventado para que quede bonito.
 4. «en_una_frase»: la idea que se mandaría al grupo, en tres tonos. Debe empezar por lo que hay detrás, no por un veredicto tipo «falso» o «verdadero». No puede contradecir los veredictos ni cerrar nada que siga abierto. Marca como mucho DOS palabras con **asteriscos** (irán resaltadas).
    neutro: seco y claro. complice: empieza dándole al otro la razón que tiene («yo también lo pensé…»). seco: lo mínimo.
-5. «titulo_corto»: 2–4 palabras para la lista de piezas. «fuente_original»: qué es (por ejemplo «captura de un titular de la BBC», «texto reenviado»).
+5. «titulo_corto»: 2–4 palabras para la lista de piezas. «fuente_original»: qué es (por ejemplo «captura de un titular», «texto reenviado», «tu pregunta»).
 
 Formato:
-<json>{"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"titulo":"","grande":"","remate":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":{"neutro":"","complice":"","seco":""}}</json>` });
+<json>{"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"titulo":"","grande":"","remate":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":{"neutro":"","complice":"","seco":""}}</json>` });
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: contenido }], busquedas: DEF.busquedas, maxTokens: 5000, señal });
     const j = sacarJSON(r.texto);
     return { datos: normalizarLectura(j), consumo: r.consumo, errBusqueda: r.errBusqueda };
@@ -141,7 +142,8 @@ Formato:
     const f = j.en_una_frase || {};
     return {
       titulo: limpia(j.titulo_corto) || 'Sin título',
-      fuenteOriginal: limpia(j.fuente_original) || 'lo que te llegó',
+      fuenteOriginal: limpia(j.fuente_original) || (j.es_pregunta ? 'tu pregunta' : 'lo que te llegó'),
+      esPregunta: j.es_pregunta === true,
       original: segs, tramos, inicio: 't0',
       portada: { neutro: limpia(f.neutro), complice: limpia(f.complice) || limpia(f.neutro), seco: limpia(f.seco) || limpia(f.neutro) },
       alsoSlide: { big: limpia(a.grande) || limpia(a.titulo), sub: limpia(a.remate), fuente: limpia(a.fuente) },
@@ -244,5 +246,22 @@ Responde solo: <json>{"tipo":""}</json>`;
     return !!r;
   }
 
-  window.MOTOR = { leer, responder, responderLibre, interpretar, porPalabras, probarClave, ajustes, modo, proxy, PREGUNTA, TIPOS, VERS, DEF };
+  // ---------- enlaces cortos (las piezas se guardan en el intermediario) ----------
+  async function guardarPieza(obj) {
+    if (!proxy()) throw { tipo: 'sin_almacen', mensaje: 'El enlace corto necesita el intermediario.' };
+    let r;
+    try { r = await fetch(proxy().replace(/\/$/, '') + '/p', { method: 'POST', headers: { 'content-type': 'application/json', 'x-andalso-codigo': ajustes.codigo || '' }, body: JSON.stringify(obj) }); }
+    catch (e) { throw { tipo: 'red', mensaje: 'No hay conexión para crear el enlace.' }; }
+    let d = {}; try { d = await r.json(); } catch (e) {}
+    if (r.ok && d.id) return d.id;
+    const t = d.error && d.error.type;
+    throw { tipo: t || 'error', mensaje: t === 'sin_almacen' ? 'Falta activar los enlaces cortos en Cloudflare.' : t === 'codigo' ? 'Hace falta el enlace de invitación para crear enlaces.' : 'No he podido crear el enlace.' };
+  }
+  async function leerPieza(id) {
+    const r = await fetch(proxy().replace(/\/$/, '') + '/p/' + encodeURIComponent(id));
+    if (!r.ok) throw { tipo: r.status === 404 ? 'no_existe' : 'error' };
+    return r.json();
+  }
+
+  window.MOTOR = { guardarPieza, leerPieza, leer, responder, responderLibre, interpretar, porPalabras, probarClave, ajustes, modo, proxy, PREGUNTA, TIPOS, VERS, DEF };
 })();
