@@ -55,3 +55,10 @@ jobs:
           sleep 5
           curl -sS https://andalso.jrjulvez.workers.dev/ | tee /tmp/r.json
           grep -q '"enlaces_cortos":true' /tmp/r.json && echo "OK: intermediario nuevo con enlaces cortos"
+      - name: Comprobar que se conservan la clave y el código
+        run: |
+          S=$(curl -sS -o /tmp/p.json -w '%{http_code}' -X POST -H 'Origin: https://jrjulvez.github.io' -H 'content-type: application/json' -d '{}' https://andalso.jrjulvez.workers.dev/)
+          cat /tmp/p.json; echo
+          if [ "$S" = "401" ]; then echo "OK: pide el código de invitación (CODIGO conservado)";
+          elif grep -q '"config"' /tmp/p.json; then echo "::error::Falta ANTHROPIC_API_KEY en el Worker"; exit 1;
+          else echo "::warning::Respuesta inesperada ($S): revisa CODIGO"; fi
