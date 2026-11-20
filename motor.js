@@ -112,14 +112,16 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
     contenido.push({ type: 'text', text: `Haz esto:
 0. Decide si es un MENSAJE que le ha llegado o una PREGUNTA suya («¿es verdad que…?», «me han dicho que…», «¿por qué…?»). «es_pregunta»: true o false.
 1. «original»: si es un mensaje, el texto retecleado tal cual (sin datos de personas privadas); si es un enlace, el titular de la noticia. Si es una pregunta, lo que esa pregunta da por hecho, escrito como afirmaciones neutras en una a tres frases (por ejemplo «¿es verdad que la luz ha subido un 30 % por los impuestos?» → «La luz ha subido un 30 %. Es por los impuestos.»). Si no da nada por hecho, escribe la idea de fondo que se suele oír sobre ese tema, sin inventar cifras.
-2. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto» debe ser un trozo LITERAL del original. Para cada una busca y da veredicto, «porque» (una frase) y la fuente.
-3. «also»: el hecho comprobado que más amplía lo que llegó, lo que también es verdad y el mensaje no cuenta. Mejor si tiene un número que da contexto. Nunca uno inventado para que quede bonito.
+2. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto» debe ser un trozo LITERAL del original. Para cada una busca y da veredicto, «porque» (UNA frase de 15 palabras como mucho, que se entienda sola) y la fuente.
+3. «also»: el hecho comprobado que más amplía lo que llegó, lo que también es verdad y el mensaje no cuenta. Mejor si tiene un número que da contexto. Nunca uno inventado para que quede bonito. «grande»: 14 palabras como mucho, que impacte leído solo.
 4. «en_una_frase»: la idea que se mandaría al grupo, en tres tonos. Debe empezar por lo que hay detrás, no por un veredicto tipo «falso» o «verdadero». No puede contradecir los veredictos ni cerrar nada que siga abierto. Marca como mucho DOS palabras con **asteriscos** (irán resaltadas).
    neutro: seco y claro. complice: empieza dándole al otro la razón que tiene («yo también lo pensé…»). seco: lo mínimo.
+6. «gancho»: la idea central de lo que llegó en 12 palabras como mucho, tal como la diría quien lo manda (sin juzgarla).
+7. «preguntas»: 4 preguntas que alguien del grupo haría sobre ESTE caso para entender lo que hay detrás (contexto, causas, comparación, a quién afecta, qué falta por saber). Concretas, con los nombres, lugares y cifras del caso, 9 palabras como mucho cada una. Nada genérico y nunca «¿es verdad?».
 5. «titulo_corto»: 2–4 palabras para la lista de piezas. «fuente_original»: qué es (por ejemplo «captura de un titular», «texto reenviado», «tu pregunta»).
 
 Formato:
-<json>{"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"titulo":"","grande":"","remate":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":{"neutro":"","complice":"","seco":""}}</json>` });
+<json>{"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"titulo":"","grande":"","remate":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":{"neutro":"","complice":"","seco":""},"gancho":"","preguntas":["","","",""]}</json>` });
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: contenido }], busquedas: DEF.busquedas, maxTokens: 5000, señal });
     const j = sacarJSON(r.texto);
     return { datos: normalizarLectura(j), consumo: r.consumo, errBusqueda: r.errBusqueda };
@@ -149,6 +151,8 @@ Formato:
       titulo: limpia(j.titulo_corto) || 'Sin título',
       fuenteOriginal: limpia(j.fuente_original) || (j.es_pregunta ? 'tu pregunta' : 'lo que te llegó'),
       esPregunta: j.es_pregunta === true,
+      gancho: limpia(j.gancho).slice(0, 140),
+      preguntas: (Array.isArray(j.preguntas) ? j.preguntas : []).map(limpia).filter(x => x && x.length <= 110).slice(0, 4),
       original: segs, tramos, inicio: 't0',
       portada: { neutro: limpia(f.neutro), complice: limpia(f.complice) || limpia(f.neutro), seco: limpia(f.seco) || limpia(f.neutro) },
       alsoSlide: { big: limpia(a.grande) || limpia(a.titulo), sub: limpia(a.remate), fuente: limpia(a.fuente) },
@@ -180,7 +184,7 @@ Busca y contesta. «respuesta»: 1–2 frases que se leen de un tirón. «titulo
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: txt }], busquedas: tipo === 'falta' ? 2 : DEF.busquedas, maxTokens: 3000, señal });
     const j = sacarJSON(r.texto);
     if (j.relacion === false) return { sinRelacion: true, r: limpia(j.respuesta) || 'No encuentro relación con lo que te llegó.', consumo: r.consumo };
-    const items = (j.items || []).map(e => ({ t: limpia(e.texto), ver: verOK(e.veredicto), f: limpia(e.fuente) || '—', url: urlOK(e.url) })).filter(e => e.t).slice(0, 5);
+    const items = (j.items || []).map(e => ({ t: limpia(e.texto), ver: verOK(e.veredicto), f: limpia(e.fuente) || '—', url: urlOK(e.url) })).filter(e => e.t).slice(0, 4);
     if (!items.length) throw { codigo: 'formato', mensaje: 'La respuesta ha llegado vacía. Vuelve a probar.' };
     const peor = items.map(e => e.ver).sort((a, b) => rango(b) - rango(a))[0];
     return { nodo: { q: PREGUNTA[tipo], titulo: limpia(j.titulo) || items[0].t, ver: verOK(j.veredicto || peor), fuente: limpia(j.fuente) || items[0].f, r: limpia(j.respuesta), items }, consumo: r.consumo };
@@ -196,22 +200,25 @@ PREGUNTA LIBRE de la persona: «${pregunta}»
 1. Decide qué es («tipo»):
    also = qué más es verdad o qué no cuenta el mensaje · relacion = con qué tiene que ver, causas, conexiones · antes = qué pasó antes · normal = si es normal o raro · dichos = qué dice cada parte · ami = cómo le afecta en España · falta = qué no se sabe · verdad = si el propio mensaje es verdad · libre = cualquier otra pregunta relacionada con lo que llegó · ninguna = no tiene nada que ver con lo que llegó.
 2. Si es «verdad» o «ninguna», no busques: pon solo el tipo y una «respuesta» de una frase.
-3. Si no, busca y contesta a SU pregunta tal como la ha hecho. «titulo»: la respuesta en menos de 12 palabras. «respuesta»: 1–2 frases. «items»: 1–5 puntos con veredicto y fuente. «veredicto»: el del punto más débil. Si no encuentras fuente, dilo con «sin fuente»; no rellenes.
+3. Si no, busca y contesta a SU pregunta tal como la ha hecho. «titulo»: la respuesta en menos de 12 palabras, que impacte leída sola. «respuesta»: 1–2 frases. «items»: 1–3 puntos con veredicto y fuente, de 15 palabras como mucho. «veredicto»: el del punto más débil. Si no encuentras fuente, dilo con «sin fuente»; no rellenes.
+4. «siguientes»: 2 preguntas nuevas que surgen de esta respuesta, concretas para este caso, 9 palabras como mucho.
 
-<json>{"tipo":"","titulo":"","veredicto":"","fuente":"","respuesta":"","items":[{"texto":"","veredicto":"","fuente":"","url":""}]}</json>`;
+<json>{"tipo":"","titulo":"","veredicto":"","fuente":"","respuesta":"","items":[{"texto":"","veredicto":"","fuente":"","url":""}],"siguientes":["",""]}</json>`;
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: txt }], busquedas: DEF.busquedas, maxTokens: 3000, señal });
     const j = sacarJSON(r.texto);
     const tipo = (TIPOS.indexOf(j.tipo) >= 0 || ['libre', 'verdad', 'ninguna'].indexOf(j.tipo) >= 0) ? j.tipo : 'libre';
     if (tipo === 'verdad') return { tipo, consumo: r.consumo };
     if (tipo === 'ninguna') return { tipo, r: limpia(j.respuesta) || 'No encuentro relación entre tu pregunta y lo que te ha llegado.', consumo: r.consumo };
-    const items = (j.items || []).map(e => ({ t: limpia(e.texto), ver: verOK(e.veredicto), f: limpia(e.fuente) || '—', url: urlOK(e.url) })).filter(e => e.t).slice(0, 5);
+    const siguientes = (Array.isArray(j.siguientes) ? j.siguientes : []).map(limpia).filter(x => x && x.length <= 110).slice(0, 2);
+    const items = (j.items || []).map(e => ({ t: limpia(e.texto), ver: verOK(e.veredicto), f: limpia(e.fuente) || '—', url: urlOK(e.url) })).filter(e => e.t).slice(0, 4);
     if (!items.length) {
       if (limpia(j.respuesta)) items.push({ t: limpia(j.respuesta), ver: 'sin fuente', f: 'sin fuente encontrada', url: '' });
       else throw { codigo: 'formato', mensaje: 'La respuesta ha llegado vacía. Vuelve a probar.' };
     }
     const peor = items.map(e => e.ver).sort((a, b) => rango(b) - rango(a))[0];
-    const q = tipo === 'libre' ? '«' + pregunta.replace(/^[¿\s]+|[?\s]+$/g, '') + '»' : PREGUNTA[tipo];
-    return { tipo, nodo: { q, titulo: limpia(j.titulo) || items[0].t, ver: verOK(j.veredicto || peor), fuente: limpia(j.fuente) || items[0].f, r: limpia(j.respuesta), items }, consumo: r.consumo };
+    const limpiaQ = pregunta.trim().replace(/^¿?\s*/, '').replace(/\s*\??$/, '');
+    const q = '¿' + limpiaQ.charAt(0).toUpperCase() + limpiaQ.slice(1) + '?';
+    return { tipo, siguientes, nodo: { q, titulo: limpia(j.titulo) || items[0].t, ver: verOK(j.veredicto || peor), fuente: limpia(j.fuente) || items[0].f, r: limpia(j.respuesta), items }, consumo: r.consumo };
   }
   function rango(v) { return { 'es así': 0, 'dicho': 1, 'a medias': 2, 'sin fuente': 3, 'no es así': 4 }[v] || 0; }
 

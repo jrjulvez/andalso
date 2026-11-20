@@ -7,6 +7,7 @@
   const EST = { 'es así': 'solid', 'a medias': 'dotted', 'no es así': 'solid', 'sin fuente': 'dotted', 'dicho': 'dashed' };
   const DTIT = { also: 'also', relacion: 'Cadena', antes: 'Tiempo', normal: '¿Es lo normal?', dichos: 'Dichos', ami: '¿Y a mí?', falta: 'Qué falta saber' };
   const logoBtn = sz => `<button class="btn" data-go="inicio" aria-label="and also: volver al principio" style="border:0;padding:0;min-height:0;background:none">${logo(sz)}</button>`;
+  const GRIS = '#55534E';
   const titDiapo = (P, k) => k === 'unica' ? 'Ficha única' : k === 'portada' ? 'Portada · en una frase' : k === 'enlace' ? 'Enlace · todo lo comprobado' : k === 'frases' ? 'Frase a frase · lo que llegó, revisado' : /^f\d+$/.test(k) ? 'Frase ' + (+k.slice(1) + 1) + ' · ' + (P.tramos[P.original.filter(x => typeof x !== 'string')[+k.slice(1)].k] || {}).ver : (DTIT[k] || 'Tu pregunta') + ' · ' + P.N[k].titulo;
   const ORDEN = ['also', 'relacion', 'antes', 'normal', 'dichos', 'ami', 'falta'];
 
@@ -68,16 +69,17 @@
   }
   const etiqueta = P => P.esPregunta ? 'lo que se da por hecho' : 'lo que te llegó · ' + esc(P.fuenteOriginal) + ', retecleado';
   const PESO = { 'no es así': 0, 'a medias': 1, 'sin fuente': 2, 'dicho': 3, 'es así': 4 };
+  const tramosOrden = P => P.original.filter(x => typeof x !== 'string' && P.tramos[x.k]).map((x, j) => ({ j, k: x.k, p: PESO[P.tramos[x.k].ver] })).sort((a, b) => a.p - b.p);
+  const ganchoDe = P => P.gancho || (() => { const t = tramosOrden(P)[0]; const seg = t && P.original.find(x => typeof x !== 'string' && x.k === t.k); return seg ? seg.t : ''; })();
   function diapos(P) {
     P = P || S.P;
-    const i = P.mapa.filter(k => !esta(P.fuera, k) && P.N[k]), resto = i.filter(k => k !== 'also'), conAlso = esta(i, 'also');
-    // corta: 1 ficha que lo resume todo · media: hasta 3 · entera: hasta 5
-    if (P.largo === 'corta') return ['unica'];
-    const d = ['portada'].concat(conAlso ? ['also'] : [], ['frases']);
-    if (P.largo === 'media') return d.concat(resto).slice(0, 3);
-    // entera: tus preguntas primero; si faltan, las frases más importantes, cada una en su ficha
-    const trs = P.original.filter(x => typeof x !== 'string').map((x, j) => ({ j, p: PESO[(P.tramos[x.k] || {}).ver] })).sort((a, b) => a.p - b.p).map(x => 'f' + x.j);
-    return d.concat(resto, trs).slice(0, 5);
+    // una idea por ficha · corta 1 · media hasta 3 · entera hasta 5
+    const i = P.mapa.filter(k => !esta(P.fuera, k) && P.N[k]), tuyas = i.filter(k => k !== 'also'), conAlso = esta(i, 'also');
+    if (P.largo === 'corta') return ['gancho'];
+    const tr = tramosOrden(P).map(x => 'f' + x.j);
+    const base = ['gancho'].concat(conAlso ? ['also'] : []);
+    if (P.largo === 'media') return base.concat(tuyas.slice(0, 1), tr).slice(0, 3);
+    return base.concat(tuyas, tr).slice(0, 5);
   }
   const originalHTML = (P, marcas, clic) => P.original.map(s => typeof s === 'string' ? esc(s) :
     (clic ? '<button class="tramo ' + (S.tramo === s.k ? 'sel' : '') + '" data-tramo="' + s.k + '">' + mark(esc(s.t), P.tramos[s.k].ver) + '</button>' : (marcas ? mark(esc(s.t), P.tramos[s.k].ver) : esc(s.t)))).join('');
@@ -156,8 +158,11 @@
       if (r.tipo === 'verdad') { set({ tab: 'mapa', hoja: { verdad: true, pregunta: texto } }); return; }
       if (r.tipo === 'ninguna') { set({ hoja: { ninguna: true, pregunta: texto, r: r.r + ' No me la invento: queda fuera de la pieza.' } }); return; }
       // una de las fijas que aún no está: ocupa su hueco; si no, va como pregunta tuya
-      let k = r.tipo;
-      if (k === 'libre' || (P.N[k] && esta(P.mapa, k))) { let n = 1; while (P.N['l' + n] || (S.hoja && S.hoja.k === 'l' + n)) n++; k = 'l' + n; }
+      let n = 1; while (P.N['l' + n]) n++;
+      const k = 'l' + n;
+      P.hechas = (P.hechas || []).concat([texto]);
+      if (r.siguientes && r.siguientes.length) P.preguntas = (P.preguntas || []).concat(r.siguientes.filter(q => (P.preguntas || []).indexOf(q) < 0));
+      guardaP();
       set({ hoja: { k, pregunta: texto, nodo: r.nodo } });
     } catch (e) {
       if (e && e.codigo === 'cancelado') { set({ hoja: null }); return; }
@@ -261,33 +266,44 @@ ${clave ? '<button class="btn" type="button" data-borraclave>Borrar la clave de 
     if (S.tab === 'mapa') {
       const nAlso = P.N.also, alsoDentro = nAlso && esta(P.mapa, 'also') && !esta(P.fuera, 'also');
       const tuyas = P.mapa.filter(k => k !== 'also' && P.N[k]);
-      const sugeridas = P.orden.filter(k => M.PREGUNTA[k] && k !== 'also' && !(P.N[k] && esta(P.mapa, k)));
-      const tarjeta = k => { const n = P.N[k], dentro = !esta(P.fuera, k); return `<div class="card" style="display:flex;flex-direction:column;gap:4px;${dentro ? '' : 'border-color:var(--line);color:var(--soft)'}">
-<span class="lab" style="font-size:10px">${esc(n.q)}</span>
-<button class="btn" data-ver="${k}" style="border:0;padding:0;min-height:0;text-align:left;font-size:17px;line-height:1.2;font-weight:700;color:inherit">${esc(n.titulo)}</button>
+      const hechas = (P.hechas || []).map(x => x.toLowerCase());
+      const sugeridas = (P.preguntas && P.preguntas.length ? P.preguntas : P.orden.filter(k => M.PREGUNTA[k] && k !== 'also' && !(P.N[k] && esta(P.mapa, k))).map(k => M.PREGUNTA[k].replace(/^¿(.)/, (m, c) => '¿' + c.toUpperCase())))
+        .filter(q => hechas.indexOf(q.toLowerCase()) < 0).slice(0, 6);
+      const tarjeta = k => { const n = P.N[k], dentro = !esta(P.fuera, k); return `<div class="card" style="display:flex;flex-direction:column;gap:6px;${dentro ? '' : 'border-color:var(--line);color:var(--soft)'}">
+<span style="font-size:13px;font-weight:600;color:var(--grey)">${esc(n.q)}</span>
+<button class="btn" data-ver="${k}" style="border:0;padding:0;min-height:0;text-align:left;font-size:19px;line-height:1.18;font-weight:700;color:inherit">${esc(n.titulo)}</button>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span style="font-size:12px;color:var(--grey)">${mark(esc(n.ver), n.ver)} · ${esc(n.fuente)}</span><button class="link" data-toggle="${k}" style="color:inherit;font-size:13px">${dentro ? 'quitar de la ficha' : 'volver a meter'}</button></div></div>`; };
+      const trs = P.original.filter(x => typeof x !== 'string');
       body = `<div style="display:flex;flex-direction:column">
 ${P.avisoBusqueda ? '<div class="pad" style="padding-bottom:0"><div class="err">Alguna búsqueda falló mientras leía. Revisa las fuentes antes de mandar nada.</div></div>' : ''}
-<section class="pad" style="display:flex;flex-direction:column;gap:10px">
-<span class="lab">${P.esPregunta ? 'lo que se da por hecho' : 'lo que te llegó · ' + esc(P.fuenteOriginal)}</span>
-<p style="margin:0;font-size:22px;line-height:1.55;font-weight:500">${originalHTML(P, true, true)}</p>
-<span class="small" style="line-height:1.7">Toca una frase para ver por qué. ${VERS.map(v => mark(v, v)).join(' · ')}</span>
+<section class="pad" style="display:flex;flex-direction:column;gap:8px;padding-bottom:20px">
+<span style="font-size:14px;font-weight:600;color:var(--grey)">${P.esPregunta ? 'Se dice que' : 'Te ha llegado que'}</span>
+<span style="font-size:21px;line-height:1.3;font-weight:500">«${esc(ganchoDe(P).replace(/^[«"]|[»".]+$/g, ''))}»</span>
+${S.verOriginal ? `<p style="margin:4px 0 0;font-size:15px;line-height:1.6;color:var(--grey)">${originalHTML(P, false, false)}</p>` : ''}
+<button class="link" data-veroriginal style="align-self:flex-start;color:var(--grey);font-weight:500">${S.verOriginal ? 'Ocultar el mensaje entero' : 'Ver el mensaje entero'}</button>
 </section>
-<section style="background:var(--ink);color:var(--paper);padding:20px 20px 22px;display:flex;flex-direction:column;gap:8px">
-<span class="lab" style="color:#BDBBB5">en una frase</span>
-<span style="font-size:26px;line-height:1.08;font-weight:700;letter-spacing:-.02em">${resaltar(P.portada[P.tono] || P.portada.neutro)}</span>
+<section style="background:var(--ink);color:var(--paper);padding:22px 20px 24px;display:flex;flex-direction:column;gap:8px">
+<span style="font-size:14px;font-weight:600;color:#BDBBB5">Lo que hay detrás</span>
+<span style="font-size:30px;line-height:1.04;font-weight:700;letter-spacing:-.025em">${resaltar(P.portada[P.tono] || P.portada.neutro)}</span>
 </section>
-${nAlso ? `<section class="pad" style="display:flex;flex-direction:column;gap:10px">
-<span class="lab">${hl('also')} · ¿qué también es verdad?</span>
-<div class="card" style="display:flex;flex-direction:column;gap:6px;${alsoDentro ? '' : 'border-color:var(--line);color:var(--soft)'}"><button class="btn" data-ver="also" style="border:0;padding:0;min-height:0;text-align:left;font-size:19px;line-height:1.2;font-weight:700;color:inherit">${esc(P.alsoSlide.big || nAlso.titulo)}</button>
+${nAlso ? `<section class="pad" style="display:flex;flex-direction:column;gap:8px;padding-bottom:6px">
+<span style="font-size:14px;font-weight:600;color:var(--grey)">Lo que también es verdad</span>
+<div style="display:flex;flex-direction:column;gap:6px;${alsoDentro ? '' : 'color:var(--soft)'}"><button class="btn" data-ver="also" style="border:0;padding:0;min-height:0;text-align:left;font-size:22px;line-height:1.15;font-weight:700;color:inherit">${esc(P.alsoSlide.big || nAlso.titulo)}</button>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px"><span style="font-size:12px;color:var(--grey)">${esc(nAlso.fuente)}</span><button class="link" data-toggle="also" style="color:inherit;font-size:13px">${alsoDentro ? 'quitar de la ficha' : 'volver a meter'}</button></div></div>
 </section>` : ''}
-<section class="pad" style="padding-top:${nAlso ? 0 : 18}px;display:flex;flex-direction:column;gap:10px">
-<span class="lab">pregunta más</span>
+<section class="pad" style="display:flex;flex-direction:column;gap:0;padding-bottom:6px">
+<span style="font-size:14px;font-weight:600;color:var(--grey);margin-bottom:8px">Frase a frase</span>
+${trs.map(seg => { const t = P.tramos[seg.k]; return `<div style="border-top:2px solid var(--ink);padding:12px 0;display:flex;flex-direction:column;gap:4px">
+<span style="font-size:13px;font-weight:700;letter-spacing:.02em;text-transform:uppercase">${esc(t.ver)}</span>
+<span style="font-size:16px;line-height:1.35;font-weight:500">${mark(esc(seg.t), t.ver)}</span>
+<span style="font-size:15px;line-height:1.35;color:var(--grey)">${esc(t.porque)} <span style="font-size:12px">· ${fuente(t.fuente, t.url)}</span></span></div>`; }).join('')}
+<div style="border-top:2px solid var(--ink)"></div>
+</section>
+<section class="pad" style="display:flex;flex-direction:column;gap:10px">
+<span style="font-size:14px;font-weight:600;color:var(--grey)">Sigue preguntando</span>
 ${tuyas.map(tarjeta).join('')}
-<form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="Escribe tu pregunta" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
-${sugeridas.length ? `<div style="display:flex;flex-wrap:wrap;gap:8px">${sugeridas.map(k => `<button class="chip" data-q="${k}">${esc(M.PREGUNTA[k])}</button>`).join('')}</div>` : ''}
-<span class="small">Lo que preguntes y aceptes puede entrar en tu ficha.</span>
+${sugeridas.length ? `<div style="display:flex;flex-direction:column;gap:8px">${sugeridas.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}</div>` : ''}
+<form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="O escribe la tuya" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
 </section>
 </div>`;
     } else {
@@ -349,65 +365,53 @@ ${pasosHTML()}<main>${body}</main>${bar}${hojaHTML()}`;
       inner = `<span class="lab">and also · frase a frase</span><span style="font-size:16px;line-height:1.4">Cada frase de lo que te llegó ya lleva su marca: arriba del todo. Toca cualquiera para ver por qué y con qué fuente.</span><button class="btn dark" data-close>Verlo</button>`;
     } else {
       const n = h.nodo;
-      inner = `<span class="lab">and also · ${esc(n.q)}</span><span style="font-size:16px;line-height:1.4">${esc(n.r || n.titulo)}</span>
+      inner = `<span style="font-size:22px;line-height:1.15;font-weight:700;letter-spacing:-.015em">${esc(n.titulo)}</span>${n.r && n.r !== n.titulo ? `<span style="font-size:16px;line-height:1.4">${esc(n.r)}</span>` : ''}
 <div class="list">${n.items.map(e => `<div class="row" style="grid-template-columns:22px minmax(0,1fr);column-gap:8px"><div class="spine" aria-hidden="true"><i style="border-left-style:${EST[e.ver]}"></i></div><div style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">${esc(e.t)}</span><span style="font-size:12px;color:var(--grey)">${esc(e.ver)} · ${fuente(e.f, e.url)}</span></div></div>`).join('')}</div>
-<div style="display:flex;gap:10px">${h.ya ? `<button class="btn dark" data-close style="flex:1 1 auto">Cerrar</button>` : `<button class="btn dark" data-accept style="flex:1 1 auto">Añadir a lo que hay detrás</button><button class="btn" data-close>Ahora no</button>`}</div>`;
+<div style="display:flex;gap:10px">${h.ya ? `<button class="btn dark" data-close style="flex:1 1 auto">Cerrar</button>` : `<button class="btn dark" data-accept style="flex:1 1 auto">Añadir a mi ficha</button><button class="btn" data-close>Ahora no</button>`}</div>`;
     }
     return `<div class="sheetbg" data-close-bg><div class="sheet" role="dialog" aria-modal="true" aria-label="respuesta de and also"><div class="grab" aria-hidden="true"></div>
 <span class="small">has preguntado</span><span style="font-size:18px;font-weight:600;line-height:1.25">«${esc(h.pregunta)}»</span>${inner}</div></div>`;
   }
 
   // ---------- diapositivas ----------
-  function slideWrap(n, tot, dark, inner) {
+  function slideWrap(n, tot, dark, inner, P) {
     const bg = dark ? INK : PAPER, fg = dark ? PAPER : INK;
-    return `<div class="slide" style="background:${bg};color:${fg}"><div style="display:flex;justify-content:space-between;align-items:center"><span class="logo" style="font-size:46px;color:${fg}">and ${hl('also')}</span><span style="font-size:26px">${tot > 1 ? n + '/' + tot : ''}</span></div>${inner}</div>`;
+    return `<div class="slide" style="background:${bg};color:${fg};padding:72px 80px 64px"><div style="display:flex;justify-content:space-between;align-items:center"><span class="logo" style="font-size:44px;color:${fg}">and ${hl('also')}</span><span style="font-size:26px;opacity:.7">${tot > 1 ? n + ' / ' + tot : ''}</span></div>${inner}</div>`;
   }
+  const VERBO = { 'es así': 'Es así', 'a medias': 'A medias', 'no es así': 'No es así', 'dicho': 'Es una opinión', 'sin fuente': 'Sin fuente' };
   function slidesHTML(P) {
     const d = diapos(P), tot = d.length;
-    return d.map((k, i) => {
-      const n = i + 1;
-      if (k === 'unica') {
-        const largo = P.original.map(s => typeof s === 'string' ? s : s.t).join('').length;
-        return slideWrap(n, tot, false, `<span style="margin-top:64px;font-size:26px">${etiqueta(P)}</span>
-<span style="margin-top:16px;font-size:${largo > 260 ? 32 : largo > 160 ? 38 : 44}px;line-height:1.5">${originalHTML(P, true, false)}</span>
-<span style="margin-top:64px;font-size:26px">en una frase</span>
-<span style="margin-top:12px;font-size:${plano(P.portada[P.tono]).length > 70 ? 78 : 96}px;line-height:.98;font-weight:650;letter-spacing:-.035em">${resaltar(P.portada[P.tono])}</span>
-${P.alsoSlide && P.alsoSlide.big && esta(P.mapa, 'also') && !esta(P.fuera, 'also') ? `<div style="margin-top:auto;background:${INK};color:${PAPER};padding:36px 40px;display:flex;flex-direction:column;gap:14px"><span style="font-size:26px">¿qué también es verdad?</span><span style="font-size:${P.alsoSlide.big.length > 90 ? 46 : 56}px;line-height:1.08;font-weight:600;letter-spacing:-.02em">${esc(P.alsoSlide.big)}</span><span style="font-size:22px">${esc(P.alsoSlide.fuente)}</span></div>` : ''}
-<div style="margin-top:${P.alsoSlide && P.alsoSlide.big && esta(P.mapa, 'also') && !esta(P.fuera, 'also') ? '40px' : 'auto'};border-top:3px solid ${INK};padding-top:18px"><span style="font-size:24px;line-height:1.5">${garantia(true, P)}</span></div>`);
+    const pie = (txt, dark) => `<div style="margin-top:auto;padding-top:22px;border-top:3px solid ${dark ? PAPER : INK};display:flex;justify-content:space-between;gap:20px;font-size:24px"><span>${txt}</span><span>${esc(P.fecha || fecha())}</span></div>`;
+    const nPuntos = Object.keys(P.tramos).length + P.mapa.filter(k => !esta(P.fuera, k) && P.N[k]).length;
+    return d.map((k, idx) => {
+      const n = idx + 1;
+      if (k === 'gancho') {
+        const g = ganchoDe(P), titular = P.portada[P.tono] || P.portada.neutro, largo = plano(titular).length;
+        return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'te ha llegado que'}</span>
+<span style="margin-top:18px;font-size:${g.length > 80 ? 46 : 56}px;line-height:1.15;font-weight:500;color:${GRIS}">«${esc(g.replace(/^[«"]|[»".]+$/g, ''))}»</span>
+<span style="margin-top:auto;font-size:30px;font-weight:500">lo que hay detrás</span>
+<span style="margin-top:16px;font-size:${largo > 80 ? 92 : largo > 50 ? 112 : 132}px;line-height:.95;font-weight:700;letter-spacing:-.04em">${resaltar(titular)}</span>
+<div style="height:70px"></div>${pie(nPuntos + ' puntos comprobados con fuentes')}`, P);
       }
-      if (k === 'portada') return slideWrap(n, tot, false, `<span style="margin-top:56px;font-size:26px">${etiqueta(P)}</span>
-<span style="margin-top:18px;font-size:${P.original.map(s => typeof s === 'string' ? s : s.t).join('').length > 180 ? 34 : 44}px;line-height:1.55">${originalHTML(P, true, false)}</span>
-<span style="margin-top:48px;font-size:26px">en una frase</span>
-<span style="margin-top:12px;font-size:${plano(P.portada[P.tono]).length > 70 ? 78 : 96}px;line-height:.98;font-weight:650;letter-spacing:-.035em">${resaltar(P.portada[P.tono])}</span>
-<div style="margin-top:auto;border-top:3px solid ${INK};padding-top:20px"><span style="font-size:24px;line-height:1.5">${garantia(true, P)}</span></div>`);
-      if (k === 'also') return slideWrap(n, tot, true, `<span style="margin-top:130px;font-size:26px">¿qué también es verdad?</span>
-<span style="margin-top:20px;align-self:flex-start;font-size:200px;line-height:1.1;font-weight:700;letter-spacing:-.04em">${hl('also')}</span>
-<span style="margin-top:56px;font-size:${(P.alsoSlide.big || '').length > 90 ? 64 : 82}px;line-height:.97;font-weight:600;letter-spacing:-.035em">${esc(P.alsoSlide.big)}</span>
-${P.alsoSlide.sub ? `<span style="margin-top:40px;font-size:40px;line-height:1.2;font-weight:500">${esc(P.alsoSlide.sub)}</span>` : ''}
-<span style="margin-top:auto;font-size:24px">${esc(P.alsoSlide.fuente)}</span>`);
-      if (k === 'frases') {
-        const tr = P.original.filter(s => typeof s !== 'string').slice(0, 6);
-        return slideWrap(n, tot, false, `<span style="margin-top:70px;font-size:26px">lo que llegó, frase a frase</span>
-<span style="margin-top:14px;font-size:84px;line-height:.95;font-weight:600;letter-spacing:-.035em">Cada frase, con su marca y su porqué.</span>
-<div style="margin-top:44px;display:flex;flex-direction:column;border-bottom:2px solid ${INK}">${tr.map(s => { const t = P.tramos[s.k]; return `<div style="padding:16px 0;border-top:2px solid ${INK};display:flex;flex-direction:column;gap:6px"><span style="font-size:${tr.length > 4 ? 30 : 36}px;line-height:1.25;font-weight:600">${mark(esc(s.t), t.ver)}</span><span style="font-size:${tr.length > 4 ? 22 : 26}px;line-height:1.3">${esc(t.ver)} · ${esc(t.porque)}</span></div>`; }).join('')}</div>`);
+      if (k === 'also') {
+        const big = P.alsoSlide.big || (P.N.also && P.N.also.titulo) || '';
+        return slideWrap(n, tot, true, `<span style="margin-top:110px;font-size:30px;font-weight:500">lo que también es verdad</span>
+<span style="margin-top:28px;font-size:${big.length > 90 ? 84 : big.length > 60 ? 100 : 116}px;line-height:.98;font-weight:700;letter-spacing:-.035em">${esc(big)}</span>
+<div style="height:60px"></div>${pie(esc(P.alsoSlide.fuente || (P.N.also && P.N.also.fuente) || ''), true)}`, P);
       }
       if (/^f\d+$/.test(k)) {
-        const trs = P.original.filter(x => typeof x !== 'string'), j = +k.slice(1), s = trs[j], t = P.tramos[s.k];
-        return slideWrap(n, tot, false, `<span style="margin-top:70px;font-size:26px">lo que llegó · frase ${j + 1} de ${trs.length}</span>
-<span style="margin-top:24px;font-size:${s.t.length > 120 ? 56 : 72}px;line-height:1.12;font-weight:600;letter-spacing:-.025em">${mark(esc(s.t), t.ver)}</span>
-<span style="margin-top:56px;font-size:30px;font-weight:600">${esc(t.ver)}</span>
-<span style="margin-top:14px;font-size:${(t.porque || '').length > 160 ? 34 : 42}px;line-height:1.22;font-weight:500">${esc(t.porque)}</span>
-<span style="margin-top:auto;font-size:24px">${esc(t.fuente || '')}</span>`);
+        const trs = P.original.filter(x => typeof x !== 'string'), seg = trs[+k.slice(1)], t = P.tramos[seg.k];
+        return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">el mensaje dice</span>
+<span style="margin-top:18px;font-size:${seg.t.length > 90 ? 50 : 62}px;line-height:1.2;font-weight:500">${mark(esc(seg.t), t.ver)}</span>
+<span style="margin-top:auto;font-size:${VERBO[t.ver].length > 10 ? 124 : 150}px;line-height:.92;font-weight:700;letter-spacing:-.045em">${esc(VERBO[t.ver])}</span>
+<span style="margin-top:30px;font-size:${(t.porque || '').length > 110 ? 44 : 52}px;line-height:1.15;font-weight:500;letter-spacing:-.015em">${esc(t.porque)}</span>
+<div style="height:60px"></div>${pie(esc(t.fuente || ''))}`, P);
       }
-      if (k === 'enlace') return slideWrap(n, tot, false, `<span style="margin-top:70px;font-size:26px">¿quieres bajar más?</span>
-<span style="margin-top:14px;font-size:100px;line-height:.92;font-weight:600;letter-spacing:-.035em">Todo lo comprobado, en el enlace.</span>
-<div style="margin-top:50px;display:flex;flex-direction:column;border-bottom:2px solid ${INK}">${P.mapa.filter(q => q !== 'also' && P.N[q] && !esta(P.fuera, q)).slice(0, 5).map(q => `<div style="padding:18px 0;border-top:2px solid ${INK};font-size:30px;font-weight:500">${esc(P.N[q].q)} · ${esc(P.N[q].titulo)}</div>`).join('') || `<div style="padding:18px 0;border-top:2px solid ${INK};font-size:30px;font-weight:500">frase a frase, con sus fuentes</div>`}</div>
-<span style="margin-top:50px;font-size:44px;font-weight:600;letter-spacing:-.02em">el enlace va en el mensaje ↓</span>
-<div style="margin-top:auto;display:flex;justify-content:space-between;font-size:26px"><span>hecha con and also</span><span>haz la tuya</span></div>`);
       const q = P.N[k];
-      return slideWrap(n, tot, false, `<span style="margin-top:70px;font-size:26px">${esc(q.q)}</span>
-<span style="margin-top:14px;font-size:${q.titulo.length > 60 ? 72 : 90}px;line-height:.95;font-weight:600;letter-spacing:-.035em">${esc(q.titulo)}</span>
-<div style="margin-top:56px;display:flex;flex-direction:column;border-bottom:2px solid ${INK}">${q.items.slice(0, 5).map(e => `<div style="display:grid;grid-template-columns:40px minmax(0,1fr);column-gap:20px;padding:22px 0;border-top:2px solid ${INK}"><div style="display:flex;justify-content:center"><div style="width:0;border-left:6px ${EST[e.ver]} ${INK}"></div></div><div style="display:flex;flex-direction:column;gap:6px"><span style="font-size:42px;line-height:1.08;font-weight:600">${esc(e.t)}</span><span style="font-size:26px">${esc(e.ver)} · ${esc(e.f)}</span></div></div>`).join('')}</div>`);
+      return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:40px;line-height:1.15;font-weight:600">${esc(q.q)}</span>
+<span style="margin-top:auto;font-size:${q.titulo.length > 70 ? 88 : 104}px;line-height:.97;font-weight:700;letter-spacing:-.035em">${esc(q.titulo)}</span>
+${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length > 140 ? 38 : 44}px;line-height:1.2;font-weight:500">${esc(q.r)}</span>` : ''}
+<div style="height:60px"></div>${pie(mark(esc(q.ver), q.ver) + ' · ' + esc(q.fuente))}`, P);
     });
   }
   function escalar() {
@@ -419,7 +423,7 @@ ${P.alsoSlide.sub ? `<span style="margin-top:40px;font-size:40px;line-height:1.2
   // ---------- enlace sin servidor ----------
   function piezaMin(P) {
     const N = {}; P.mapa.filter(k => P.N[k] && !esta(P.fuera, k)).forEach(k => { N[k] = P.N[k]; });
-    return { v: 1, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, original: P.original, esPregunta: !!P.esPregunta, tramos: P.tramos, portada: P.portada, alsoSlide: P.alsoSlide, N, mapa: Object.keys(N), fuera: [], largo: P.largo, tono: P.tono, fecha: P.fecha, orden: P.orden };
+    return { v: 1, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, original: P.original, esPregunta: !!P.esPregunta, gancho: P.gancho || '', tramos: P.tramos, portada: P.portada, alsoSlide: P.alsoSlide, N, mapa: Object.keys(N), fuera: [], largo: P.largo, tono: P.tono, fecha: P.fecha, orden: P.orden };
   }
   function enlaceDe(P) {
     const z = window.LZString.compressToEncodedURIComponent(JSON.stringify(piezaMin(P)));
@@ -592,6 +596,8 @@ ${nodos.map(k => { const n = P.N[k]; return `<div class="card" style="display:fl
     q('[data-borrar]', b => b.onclick = () => { store.borrar(b.dataset.borrar); render(); });
     q('[data-tab]', b => b.onclick = () => { set({ tab: b.dataset.tab, alternativas: false, quiere: false, error: '' }); window.scrollTo(0, 0); });
     q('[data-tramo]', b => b.onclick = () => set({ tramo: b.dataset.tramo, hoja: { tramo: b.dataset.tramo } }));
+    q('[data-sug]', b => b.onclick = () => preguntarTexto(b.dataset.sug));
+    q('[data-veroriginal]', b => b.onclick = () => set({ verOriginal: !S.verOriginal }));
     q('[data-empieza]', b => b.onclick = () => { const t = document.getElementById('tin'); t.value = b.dataset.empieza; S.entrada.texto = t.value; t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
     q('[data-q]', b => b.onclick = () => preguntarTipo(b.dataset.q, '¿' + M.PREGUNTA[b.dataset.q].charAt(1).toUpperCase() + M.PREGUNTA[b.dataset.q].slice(2)));
     q('[data-ver]', b => b.onclick = () => { const k = b.dataset.ver; set({ hoja: { k, pregunta: S.P.N[k].q, nodo: S.P.N[k], ya: true } }); });
