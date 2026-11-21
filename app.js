@@ -94,6 +94,7 @@
       const g = ganchoDe(P), t = titular(P), largo = plano(t).length, nP = Object.keys(P.tramos).length + (P.also ? 1 : 0) + Object.keys(P.N || {}).length;
       return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'te ha llegado que'}</span>
 <span style="margin-top:18px;font-size:${g.length > 80 ? 46 : 56}px;line-height:1.15;font-weight:500;color:${GRIS}">«${esc(g)}»</span>
+${P.estado ? `<span style="margin-top:34px;align-self:flex-start;background:${INK};color:${PAPER};font-size:30px;font-weight:700;padding:10px 18px;letter-spacing:.01em">${esc(ETQ[P.estado.etiqueta] || P.estado.etiqueta)}</span>` : ''}
 <span style="margin-top:auto;font-size:30px;font-weight:500">lo que hay detrás</span>
 <span style="margin-top:16px;font-size:${largo > 80 ? 92 : largo > 50 ? 112 : 132}px;line-height:.95;font-weight:700;letter-spacing:-.04em">${resaltar(t)}</span>
 <div style="height:70px"></div>${pie(nP + ' puntos comprobados con fuentes')}`);
@@ -135,7 +136,7 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
     if (modo === 'sin_clave') { set({ paso: 'ajustes', error: 'Para empezar hace falta una invitación o una clave propia.' }); return; }
     ctrl = new AbortController();
     const entrada = { texto: t, imagen: S.entrada.imagen };
-    set({ paso: 'leyendo', error: '', previa: null, cargando: { t0: Date.now() } });
+    set({ paso: 'leyendo', error: '', previa: null, fallo: null, cargando: { t0: Date.now() } });
     tic();
     // mientras busca, enseñar lo que se dice (sin datos: la vista previa no busca nada)
     M.previa(entrada, ctrl.signal).then(p => { if (S.paso === 'leyendo') set({ previa: p }); }).catch(() => {});
@@ -161,11 +162,13 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
       if (P.revision.estado === 'pendiente') revisarPieza(P);
     } catch (e) {
       if (e && e.codigo === 'cancelado') { set({ paso: 'inicio' }); return; }
-      set({ paso: 'inicio', error: (e && e.mensaje) || 'Algo ha fallado. Vuelve a probar.' });
+      const c = e && e.codigo, seg = Math.round((Date.now() - S.cargando.t0) / 1000);
+      M.evento(c === 'red' ? 'error_red' : c === 'formato' ? 'error_formato' : ['api', 'saturado', 'limite', 'busqueda', 'saldo', 'clave', 'cupo', 'codigo', 'config'].indexOf(c) >= 0 ? 'error_ia' : 'error_otro');
+      set({ fallo: { mensaje: (e && e.mensaje) || 'Algo ha fallado.', seg } });
     }
   }
   function sumar(P, c) { if (!c) return; P.consumo.entrada += c.entrada; P.consumo.salida += c.salida; P.consumo.busquedas += c.busquedas; }
-  const lecturaDe = P => ({ titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: P.esPregunta, gancho: P.gancho, preguntas: P.preguntas, original: P.original, tramos: P.tramos, portada: P.portada, paraChat: P.paraChat, also: P.also });
+  const lecturaDe = P => ({ resumen: P.resumen, estado: P.estado, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: P.esPregunta, gancho: P.gancho, preguntas: P.preguntas, original: P.original, tramos: P.tramos, portada: P.portada, paraChat: P.paraChat, also: P.also });
   async function revisarPieza(P) {
     P.revision = { estado: 'en_curso', cambios: [] }; if (S.P === P) render();
     try {
@@ -177,7 +180,7 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
     store.guardar(P);
     if (S.P && S.P.id === P.id) { S.P = P; S.fichasListas = null; const y = window.scrollY; render(); window.scrollTo(0, y); }
   }
-  function abrirPieza(P) { set({ P: migrar(P), paso: 'pieza', hoja: null, error: '', det: {}, verOriginal: false, alternativas: false, quiere: false, corto: null }); window.scrollTo(0, 0); }
+  function abrirPieza(P) { set({ P: migrar(P), paso: 'pieza', modo: 'investigar', hoja: null, error: '', det: {}, verOriginal: false, alternativas: false, quiere: false, corto: null }); window.scrollTo(0, 0); }
   let reloj = null;
   function tic() {
     clearInterval(reloj);
@@ -209,7 +212,12 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
       M.evento('pregunta');
       guardaP();
       let n = 1; while (P.N['l' + n]) n++;
-      set({ hoja: { k: 'l' + n, pregunta: texto, nodo: r.nodo } });
+      const k = 'l' + n;
+      P.N[k] = r.nodo;
+      if (diapos(Object.assign({}, P, { destino: 'redes' })).length < MAX_FICHAS) P.fichas = (P.fichas || []).concat([k]);
+      guardaP();
+      set({ hoja: null });
+      setTimeout(() => { const el = document.getElementById('b-' + k); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
     } catch (e) {
       if (e && e.codigo === 'cancelado') { set({ hoja: null }); return; }
       set({ hoja: { error: (e && e.mensaje) || 'Algo ha fallado.', pregunta: texto } });
@@ -218,11 +226,11 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
 
   // ---------- pantallas ----------
   function render() {
-    const f = { inicio: vInicio, ajustes: vAjustes, guia: vGuia, leyendo: vLeyendo, pieza: vPieza, vista: vVista, cargavista: vCargaVista }[S.paso] || vInicio;
+    const f = { inicio: vInicio, ajustes: vAjustes, guia: vGuia, leyendo: vLeyendo, pieza: () => S.modo === 'componer' ? vPieza() : vInvestigar(), vista: vVista, cargavista: vCargaVista }[S.paso] || vInicio;
     app.innerHTML = f();
     bind();
     escalar();
-    if (S.paso === 'pieza' && S.P && S.P.revision.estado !== 'en_curso' && (!fichasListas(S.P) || !enlaceListo(S.P)) && !preparando) programarPreparar();
+    if (S.paso === 'pieza' && S.modo === 'componer' && S.P && S.P.revision.estado !== 'en_curso' && (!fichasListas(S.P) || !enlaceListo(S.P)) && !preparando) programarPreparar();
   }
 
   function vInicio() {
@@ -289,6 +297,14 @@ ${pags > 1 ? `<div style="display:flex;justify-content:space-between;align-items
 
   function vLeyendo() {
     const s = S.cargando ? Math.round((Date.now() - S.cargando.t0) / 1000) : 0;
+    if (S.fallo) return `<header class="top">${logoBtn(22)}</header>
+<main class="pad" style="display:flex;flex-direction:column;gap:16px;padding-top:28px">
+<h1 style="margin:0;font-size:26px;line-height:1.1;letter-spacing:-.02em">No he podido terminar</h1>
+<div class="err" role="alert">${esc(S.fallo.mensaje)}</div>
+<p class="small" style="margin:0">Ha fallado a los ${S.fallo.seg} s. Tu texto sigue aquí: puedes reintentar o recortarlo.</p>
+<button class="btn dark" data-reintentar style="min-height:52px">Reintentar</button>
+<button class="btn" data-go="inicio">Cambiar el texto</button>
+</main>`;
     return `<header class="top">${logo(22)}</header>
 <main class="pad" style="display:flex;flex-direction:column;gap:22px;padding-top:28px">
 ${S.previa && S.previa.gancho ? `<div style="display:flex;flex-direction:column;gap:8px"><span style="font-size:14px;font-weight:600;color:var(--grey)">Te ha llegado que</span><span style="font-size:24px;line-height:1.25;font-weight:500">«${esc(sinComillas(S.previa.gancho))}»</span></div>` : '<span style="font-size:24px;line-height:1.25;font-weight:500" class="think">Leyendo…</span>'}
@@ -352,6 +368,61 @@ ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fi
 </div>`;
     const n = d.length, que = (chat ? 'la ficha y el texto' : 'las ' + n + ' fichas') + (P.conEnlace && !(S.corto && S.corto.error) ? (chat ? ' con enlace' : ' y el enlace') : '');
     const bar = `<div class="bar" style="flex-direction:row">${rev.estado === 'en_curso' ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Revisando antes de compartir…</span></button>` : fichasListas(P) && enlaceListo(P) ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px">${S.quiere ? 'Listo: compartir ' : 'Compartir '}${que}</button>` : `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Preparando ${chat ? 'la ficha' : 'las fichas'}…</span></button>`}</div>`;
+    return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0">${logoBtn(22)}<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div><button class="btn" data-modo="investigar" style="min-height:36px;font-size:13px;flex:none">← Volver</button></header>
+<main style="border-top:2px solid var(--ink)"><div class="pad" style="padding-bottom:0"><h1 style="margin:0;font-size:26px;line-height:1.05;letter-spacing:-.02em">Componer una ficha</h1><p class="small" style="margin:6px 0 0">Elige para dónde, el tono y qué fichas van. Todo sale de lo que has investigado.</p></div>${body}</main>${bar}${hojaHTML()}`;
+  }
+
+  const ETQ = { 'hecho asentado': 'Hecho asentado', 'confirmado': 'Confirmado', 'anunciado': 'Anunciado, sin confirmar', 'en revisión': 'En revisión', 'en discusión': 'En discusión', 'desmentido': 'Desmentido', 'opinión': 'Opinión', 'sin datos': 'Sin datos suficientes' };
+  function estadoHTML(P) {
+    const e = P.estado; if (!e) return '';
+    return `<div class="estado"><span class="etq">${esc(ETQ[e.etiqueta] || e.etiqueta)}</span><span style="font-size:16px;line-height:1.4">${esc(e.explicacion)}</span><span class="small">${fuente(e.fuente, e.url)}</span></div>`;
+  }
+  function bloqueHTML(P, k) {
+    const n = P.N[k];
+    return `<article id="b-${k}" class="bloque"><span style="font-size:14px;font-weight:600;color:var(--grey)">${esc(n.q)}</span>
+<span style="font-size:21px;line-height:1.15;font-weight:700;letter-spacing:-.015em">${esc(n.titulo)}</span>${n.r && n.r !== n.titulo ? `<span style="font-size:16px;line-height:1.45">${esc(n.r)}</span>` : ''}
+${n.items.map(e => `<div class="fila"><span class="lab" style="font-size:11px">${esc(e.ver)}</span><span style="font-size:15px;line-height:1.35">${esc(e.t)}</span><span style="font-size:13px;color:var(--grey)">${fuente(e.f, e.url)}</span></div>`).join('')}
+<button class="link" data-quitaq="${k}" style="align-self:flex-start;color:var(--grey);font-size:13px">Quitar</button></article>`;
+  }
+  function vInvestigar() {
+    const P = S.P, rev = P.revision || {};
+    const hechas = (P.hechas || []).map(x => x.toLowerCase());
+    const hilos = (P.preguntas || []).filter(q => !esta(hechas, q.toLowerCase())).slice(0, 5);
+    const tuyas = Object.keys(P.N || {}).filter(k => P.N[k]);
+    const revHTML = rev.estado === 'en_curso' ? '<span class="think">Revisando veredictos y fuentes…</span>'
+      : rev.estado === 'hecho' ? (rev.memoria ? 'Respuesta ya revisada' : rev.cambios.length ? `Revisado · ${rev.cambios.length} ${rev.cambios.length === 1 ? 'ajuste' : 'ajustes'} <button class="link" data-verajustes style="font-size:13px;padding:0">ver</button>` : 'Revisado: todo cuadra con sus fuentes')
+        : rev.estado === 'error' ? 'No se ha podido revisar: mira las fuentes' : '';
+    const body = `<div style="display:flex;flex-direction:column">
+${P.avisoBusqueda ? '<div class="pad" style="padding-bottom:0"><div class="err">Alguna búsqueda falló mientras leía. Revisa las fuentes.</div></div>' : ''}
+<section class="pad" style="display:flex;flex-direction:column;gap:10px">
+<span style="font-size:14px;font-weight:600;color:var(--grey)">${P.esPregunta ? 'Preguntas por' : 'Te ha llegado que'}</span>
+<span style="font-size:20px;line-height:1.3;font-weight:500">«${esc(ganchoDe(P))}»</span>
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center"><button class="link" data-veroriginal style="color:var(--grey);font-weight:500">${S.verOriginal ? 'Ocultar' : 'Ver lo que llegó'}</button>${P.veces > 1 ? `<span class="small">${P.veces} personas han preguntado esto</span>` : ''}</div>
+${S.verOriginal ? `<p style="margin:0;font-size:15px;line-height:1.6;color:var(--grey)">${esc(P.original.map(x => typeof x === 'string' ? x : x.t).join(''))}</p>` : ''}
+${revHTML ? `<span class="small" style="line-height:1.4">${revHTML}</span>` : ''}
+${S.verAjustes && rev.cambios && rev.cambios.length ? `<ul class="small" style="margin:0;padding-left:18px;line-height:1.45">${rev.cambios.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+</section>
+${P.resumen ? `<section class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:8px"><h2 class="h2">Qué es</h2><p style="margin:0;font-size:17px;line-height:1.5">${esc(P.resumen)}</p></section>` : ''}
+${P.estado ? `<section class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:8px"><h2 class="h2">En qué punto está</h2>${estadoHTML(P)}</section>` : ''}
+<section style="background:var(--ink);color:var(--paper);padding:22px 20px 24px;display:flex;flex-direction:column;gap:8px">
+<span style="font-size:14px;font-weight:600;color:#BDBBB5">Lo que hay detrás</span>
+<span style="font-size:28px;line-height:1.05;font-weight:700;letter-spacing:-.025em">${resaltar(P.portada.neutro)}</span>
+</section>
+${P.also ? `<section class="pad" style="display:flex;flex-direction:column;gap:8px"><h2 class="h2">Lo que también es verdad</h2><span style="font-size:21px;line-height:1.2;font-weight:700">${esc(P.also.big)}</span><span class="small">${esc(P.also.ver)} · ${fuente(P.also.fuente, P.also.url)}</span></section>` : ''}
+<section class="pad" style="display:flex;flex-direction:column;gap:0">
+<h2 class="h2" style="margin-bottom:8px">${P.esPregunta ? 'Lo que se suele dar por hecho' : 'Lo que dice, frase a frase'}</h2>
+${trs(P).map(seg => { const t = P.tramos[seg.k]; return `<div style="border-top:2px solid var(--ink);padding:12px 0;display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase">${esc(t.ver)}</span><span style="font-size:16px;line-height:1.35;font-weight:500">${mark(esc(seg.t), t.ver)}</span><span style="font-size:15px;line-height:1.35;color:var(--grey)">${esc(t.porque)} <span style="font-size:12px">· ${fuente(t.fuente, t.url)}</span></span></div>`; }).join('')}
+<div style="border-top:2px solid var(--ink)"></div>
+</section>
+${tuyas.length ? `<section class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:14px"><h2 class="h2">Lo que has ido descubriendo</h2>${tuyas.map(k => bloqueHTML(P, k)).join('')}</section>` : ''}
+<section class="pad" style="padding-top:${tuyas.length ? 8 : 0}px;display:flex;flex-direction:column;gap:10px">
+<h2 class="h2">Sigue el hilo</h2>
+${hilos.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}
+<form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="${hilos.length ? 'O pregunta lo que quieras' : 'Pregunta lo que quieras'}" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
+<span class="small">Cada respuesta se suma aquí, con sus fuentes.</span>
+</section>
+</div>`;
+    const bar = `<div class="bar" style="flex-direction:row"><button class="btn dark" data-modo="componer" style="flex:1 1 auto;min-height:52px;font-size:16px">Componer una ficha para compartir</button></div>`;
     return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0">${logoBtn(22)}<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div></header>
 <main style="border-top:2px solid var(--ink)">${body}</main>${bar}${hojaHTML()}`;
   }
@@ -377,7 +448,7 @@ ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fi
   const firma = o => { const t = JSON.stringify(o); let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return t.length + ':' + h; };
   function piezaMin(P) {
     const N = {}; Object.keys(P.N || {}).forEach(k => { N[k] = P.N[k]; });
-    return { v: 2, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: !!P.esPregunta, gancho: P.gancho || '', original: P.original, tramos: P.tramos, portada: P.portada, also: P.also, N, fichas: P.fichas, destino: P.destino, tono: P.tono, fecha: P.fecha };
+    return { v: 2, resumen: P.resumen || '', estado: P.estado || null, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: !!P.esPregunta, gancho: P.gancho || '', original: P.original, tramos: P.tramos, portada: P.portada, also: P.also, N, fichas: P.fichas, destino: P.destino, tono: P.tono, fecha: P.fecha };
   }
   const firmaFichas = P => firma({ d: diapos(P), m: piezaMin(P) });
   const enlaceListo = P => !P.conEnlace || (S.corto && S.corto.error) || (P.corto && P.corto.firma === firma(piezaMin(P)));
@@ -405,7 +476,7 @@ ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fi
   function programarPreparar() { clearTimeout(prepTimer); prepTimer = setTimeout(preparar, 250); }
   async function preparar() {
     if (preparando) { otraVez = true; return; }
-    const P = S.P; if (!P || S.paso !== 'pieza' || P.revision.estado === 'en_curso') return;
+    const P = S.P; if (!P || S.paso !== 'pieza' || S.modo !== 'componer' || P.revision.estado === 'en_curso') return;
     preparando = true; otraVez = false;
     try {
       if (!fichasListas(P)) {
@@ -473,6 +544,9 @@ ${text ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(text)}" 
       P.fichas = (P.fichas || []).filter(KEY_OK);
       P.destino = P.destino === 'chat' ? 'chat' : 'redes';
       P.tono = P.tono === 'complice' ? 'complice' : 'neutro';
+      if (P.estado && (M.ESTADOS.indexOf(P.estado.etiqueta) < 0 || typeof P.estado.explicacion !== 'string')) P.estado = null;
+      if (P.estado && !urlBien(P.estado.url)) P.estado.url = '';
+      if (typeof P.resumen !== 'string') P.resumen = '';
       return P;
     } catch (e) { return null; }
   }
@@ -500,7 +574,7 @@ ${text ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(text)}" 
     const P = S.vista, home = esc(location.origin + location.pathname), todas = candidatas(P);
     return `<header class="top"><a href="${home}" aria-label="and also: ir al principio" style="text-decoration:none">${logo(24)}</a><a class="btn" href="${home}" data-ref style="display:inline-flex;align-items:center;text-decoration:none;min-height:36px;font-size:13px">Haz la tuya</a></header>
 <main style="display:flex;flex-direction:column;gap:14px">
-<div class="pad" style="padding-bottom:0;display:flex;flex-direction:column;gap:8px"><span class="lab">te lo han contado entero</span><h1 style="margin:0;font-size:30px;line-height:1.04;letter-spacing:-.025em">${resaltar(titular(P))}</h1></div>
+<div class="pad" style="padding-bottom:0;display:flex;flex-direction:column;gap:10px"><span class="lab">te lo han contado entero</span><h1 style="margin:0;font-size:30px;line-height:1.04;letter-spacing:-.025em">${resaltar(titular(P))}</h1>${P.resumen ? `<p style="margin:0;font-size:16px;line-height:1.5">${esc(P.resumen)}</p>` : ''}${estadoHTML(P)}</div>
 <div class="slides">${slidesHTML(P, todas).map(s => `<div class="slidebox">${s}</div>`).join('')}</div>
 <div class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:12px">
 ${todas.map(k => `<div style="border-top:2px solid var(--ink);padding-top:10px;display:flex;flex-direction:column;gap:6px"><button class="link" data-det="${k}" style="align-self:flex-start;font-size:15px;text-align:left">${k === 'gancho' ? (P.esPregunta ? 'Lo que se suele dar por hecho' : 'Lo que llegó, frase a frase') : k === 'also' ? 'Lo que también es verdad' : /^f/.test(k) ? '«' + esc(trs(P)[+k.slice(1)].t) + '»' : esc(P.N[k].q)} ${S.det[k] ? '▴' : '▾'}</button>${S.det[k] ? detalleHTML(P, k).replace(/<button class="link" data-quitaq[^>]*>[^<]*<\/button>/, '') : ''}</div>`).join('')}
@@ -574,6 +648,7 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     q('[data-verajustes]', b => b.onclick = () => set({ verAjustes: !S.verAjustes }));
     const keep = fn => { const y = window.scrollY; fn(); render(); window.scrollTo(0, y); };
     q('[data-det]', b => b.onclick = () => keep(() => { S.det[b.dataset.det] = !S.det[b.dataset.det]; }));
+    q('[data-modo]', b => b.onclick = () => { set({ modo: b.dataset.modo, error: '', alternativas: false, quiere: false }); window.scrollTo(0, 0); });
     q('[data-destino]', b => b.onclick = () => keep(() => { S.P.destino = b.dataset.destino; S.alternativas = false; guardaP(); }));
     q('[data-tono]', b => b.onclick = () => keep(() => { S.P.tono = b.dataset.tono; guardaP(); }));
     q('[data-incluir]', b => b.onclick = () => keep(() => {
@@ -591,6 +666,7 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
       setTimeout(() => { const el = app.querySelector('[data-det="' + h.k + '"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
     });
     q('[data-close]', b => b.onclick = () => set({ hoja: null }));
+    q('[data-reintentar]', b => b.onclick = () => empezar());
     q('[data-cancelar]', b => b.onclick = () => { if (ctrl) ctrl.abort(); });
     q('[data-compartir]', b => b.onclick = () => compartir());
     q('[data-descargar]', b => b.onclick = () => descargar());

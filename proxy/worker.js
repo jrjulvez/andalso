@@ -7,13 +7,13 @@
 //   CUPO_DIARIO        (opcional) llamadas a la IA por invitación y día (por defecto 60)
 // Almacén KV «PIEZAS»: piezas compartidas, invitaciones, cupos, contadores y memoria de respuestas.
 const MODELOS = ['claude-sonnet-5-5', 'claude-haiku-5-5'];
-const MAX_TOKENS = 6000;
+const MAX_TOKENS = 8000;
 const MAX_BUSQUEDAS = 6;
 const MAX_PIEZA = 60000;
 const DIA = 60 * 60 * 24;
 const VIDA_PIEZA = DIA * 365;
 const VIDA_MEMORIA = DIA * 3;      // una respuesta guardada vale 3 días: las noticias cambian
-const EVENTOS = ['abre', 'pieza', 'memoria', 'pregunta', 'compartida', 'enlace_abierto', 'receptor_crea', 'vuelta7', 'llamada'];
+const EVENTOS = ['abre', 'pieza', 'memoria', 'pregunta', 'compartida', 'enlace_abierto', 'receptor_crea', 'vuelta7', 'llamada', 'error_red', 'error_formato', 'error_ia', 'error_otro'];
 const ALFABETO = 'abcdefghijkmnopqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ23456789';
 const nuevoId = n => { const b = crypto.getRandomValues(new Uint8Array(n)); return Array.from(b, x => ALFABETO[x % ALFABETO.length]).join(''); };
 const hoy = () => new Date().toISOString().slice(0, 10);

@@ -4,6 +4,7 @@
 (function () {
   const API = 'https://api.anthropic.com/v1/messages';
   const VERS = ['es así', 'a medias', 'no es así', 'sin fuente', 'dicho'];
+  const ESTADOS = ['hecho asentado', 'confirmado', 'anunciado', 'en revisión', 'en discusión', 'desmentido', 'opinión', 'sin datos'];
   const DEF = { modelo: 'claude-sonnet-5-5', rapido: 'claude-haiku-5-5', busquedas: 6 };
 
   const guarda = (k, v) => { try { v ? localStorage.setItem(k, v) : localStorage.removeItem(k); } catch (e) {} };
@@ -116,47 +117,72 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
   // ---------- 1. leer ----------
   async function leer(entrada, señal) {
     const c = contenidoDe(entrada);
-    c.push({ type: 'text', text: `Haz esto:
-1. «es_pregunta»: true si es una pregunta o duda de la persona («¿por qué…?», «me han dicho que…», «explícame…»); false si es algo que le ha llegado.
-2. «original»: si le ha llegado, el texto retecleado tal cual (sin datos de personas privadas; si es un enlace, el titular). Si es una pregunta, lo que se suele oír o dar por hecho sobre ese tema, en una a tres frases neutras y sin cifras inventadas.
-3. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto», un trozo LITERAL del original. Para cada una busca y da veredicto, «porque» (UNA frase de 15 palabras como mucho, que se entienda sola), la fuente y su «url».
-4. «also»: el hecho comprobado que más amplía lo que llegó o mejor responde a la pregunta: lo que también es verdad y no se cuenta. Mejor con un número que dé contexto. «grande»: 14 palabras como mucho, que impacte leído solo. Siempre con fuente y url.
-5. «en_una_frase»: lo que hay detrás, en dos tonos. Empieza por el contexto, no por un veredicto tipo «falso». No puede contradecir los veredictos ni cerrar nada abierto. Marca como mucho DOS palabras con **asteriscos**. neutro: claro y directo. complice: empieza dando la razón que el otro tiene («yo también lo pensé…»).
-6. «para_el_chat»: lo que la persona escribiría en el grupo junto a la ficha: una o dos frases, como un amigo, sin dar lecciones ni decir «falso», sin asteriscos.
-7. «gancho»: la idea central de lo que llegó en 12 palabras como mucho, tal como la diría quien lo manda.
-8. «preguntas»: 4 preguntas que alguien del grupo haría sobre ESTE caso para entender lo que hay detrás (por qué, desde cuándo, a quién afecta, comparación, qué falta por saber). Concretas, con nombres, lugares y cifras del caso, 9 palabras como mucho. Nunca «¿es verdad?».
-9. «titulo_corto»: 2–4 palabras. «fuente_original»: qué es («captura de un titular», «texto reenviado», «tu pregunta»).
+    const largo = !entrada.imagen && entrada.texto.length > 600;
+    c.push({ type: 'text', text: `Haz esto, en este orden de importancia:
+1. «resumen»: qué es esto, en dos frases claras, como se lo explicarías a un amigo: de qué va, quién lo dice y por qué importa.
+2. «estado»: en qué punto está lo principal. «etiqueta», una de estas: ${ESTADOS.map(e => '«' + e + '»').join(', ')}. «explicacion»: una o dos frases que lo justifiquen (por ejemplo: un anuncio de hace horas que nadie ha revisado aún es «anunciado», no «confirmado»). Con su fuente y url. Si lo principal es un anuncio, un estudio o una demostración, busca la fuente original y dilo.
+3. «es_pregunta»: true si es una pregunta o duda de la persona («¿por qué…?», «me han dicho que…», «explícame…»); false si es algo que le ha llegado.
+4. «original»: ${largo ? 'el texto es LARGO: no lo copies entero. Escribe solo sus 3 a 6 afirmaciones centrales, cada una copiada palabra por palabra del texto, separadas por un espacio.' : 'si le ha llegado, el texto retecleado tal cual (sin datos de personas privadas; si es un enlace, el titular). Si es una pregunta, lo que se suele oír o dar por hecho sobre ese tema, en una a tres frases neutras y sin cifras inventadas.'}
+5. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto», un trozo copiado EXACTAMENTE del original. Prioriza lo que más importa y lo más dudoso. Para cada una busca y da veredicto, «porque» (UNA frase de 15 palabras como mucho, que se entienda sola), la fuente y su «url».
+6. «also»: el hecho comprobado que más amplía lo que llegó o mejor responde a la pregunta: lo que también es verdad y no se cuenta. Mejor con un número que dé contexto. «grande»: 14 palabras como mucho. Siempre con fuente y url.
+7. «en_una_frase»: lo que hay detrás, en dos tonos. Empieza por el contexto, no por un veredicto tipo «falso». No puede contradecir los veredictos ni el estado, ni cerrar nada abierto. Marca como mucho DOS palabras con **asteriscos**. neutro: claro y directo. complice: empieza dando la razón que el otro tiene («yo también lo pensé…»).
+8. «para_el_chat»: lo que la persona escribiría en el grupo: una o dos frases, como un amigo, sin dar lecciones ni decir «falso», sin asteriscos.
+9. «gancho»: la idea central de lo que llegó en 12 palabras como mucho, tal como la diría quien lo manda.
+10. «preguntas»: 5 hilos para seguir investigando ESTE caso, como preguntas: contexto, causas, comparación, a quién afecta, qué dicen otros expertos, qué falta por saber. Concretas, con nombres y cifras del caso, 9 palabras como mucho. Nunca «¿es verdad?».
+11. «titulo_corto»: 2–4 palabras. «fuente_original»: qué es («post de un foro», «captura de un titular», «texto reenviado», «tu pregunta»).
+Sé breve en todo: la respuesta tiene que caber entera.
 
-<json>{"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"grande":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":{"neutro":"","complice":""},"para_el_chat":"","gancho":"","preguntas":["","","",""]}</json>` });
-    const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: c }], busquedas: DEF.busquedas, maxTokens: 5000, señal });
+<json>{"resumen":"","estado":{"etiqueta":"","explicacion":"","fuente":"","url":""},"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"grande":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":{"neutro":"","complice":""},"para_el_chat":"","gancho":"","preguntas":["","","","",""]}</json>` });
+    const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: c }], busquedas: DEF.busquedas, maxTokens: 8000, señal });
     return { datos: normalizarLectura(sacarJSON(r.texto)), consumo: r.consumo, errBusqueda: r.errBusqueda };
   }
 
+  // busca un trozo dentro del original aunque cambien espacios, comillas, guiones o mayúsculas
+  const nc = ch => /[«»“”„"'‘’]/.test(ch) ? '"' : /[–—−]/.test(ch) ? '-' : ch.toLowerCase();
+  function localizar(orig, tx, desde) {
+    let i = orig.indexOf(tx, desde);
+    if (i >= 0) return [i, i + tx.length];
+    let no = '', mapa = [];
+    for (let k = 0; k < orig.length; k++) {
+      const ch = orig[k];
+      if (/\s/.test(ch)) { if (no && no[no.length - 1] !== ' ') { no += ' '; mapa.push(k); } continue; }
+      no += nc(ch); mapa.push(k);
+    }
+    const nt = tx.replace(/\s+/g, ' ').trim().split('').map(nc).join('');
+    let d = 0; while (d < mapa.length && mapa[d] < desde) d++;
+    i = no.indexOf(nt, d);
+    if (i < 0) return null;
+    return [mapa[i], mapa[i + nt.length - 1] + 1];
+  }
   function normalizarLectura(j) {
-    const original = limpia(j.original);
-    if (!original) throw { codigo: 'formato', mensaje: 'No he podido leerlo. Prueba a pegar el texto.' };
-    // localizar cada tramo dentro del original, en orden
-    const segs = [], tramos = {}; let pos = 0, n = 0;
-    (j.tramos || []).forEach(t => {
-      const tx = limpia(t.texto); if (!tx) return;
-      let i = original.indexOf(tx, pos);
-      if (i < 0) i = original.toLowerCase().indexOf(tx.toLowerCase(), pos);
-      if (i < 0) return;
-      if (i > pos) segs.push(original.slice(pos, i));
+    let original = limpia(j.original);
+    const lista = (j.tramos || []).map(t => ({ tx: limpia(t.texto), t })).filter(x => x.tx);
+    if (!lista.length) throw { codigo: 'formato', mensaje: 'No he podido separar las afirmaciones. Vuelve a probar.' };
+    // si ninguna afirmación cuadra con el original, el original pasa a ser las afirmaciones
+    if (!original || !lista.some(x => localizar(original, x.tx, 0))) original = lista.map(x => x.tx).join(' ');
+    const segs = [], tramos = {}, sueltos = []; let pos = 0, n = 0;
+    lista.forEach(({ tx, t }) => {
+      const r = localizar(original, tx, pos);
       const k = 't' + (n++);
-      segs.push({ k, t: original.slice(i, i + tx.length) });
       tramos[k] = { ver: verOK(t.veredicto), porque: limpia(t.porque), fuente: limpia(t.fuente) || 'sin fuente', url: urlOK(t.url) };
-      pos = i + tx.length;
+      if (!r) { sueltos.push({ k, t: tx }); return; }
+      if (r[0] > pos) segs.push(original.slice(pos, r[0]));
+      segs.push({ k, t: original.slice(r[0], r[1]) });
+      pos = r[1];
     });
     if (pos < original.length) segs.push(original.slice(pos));
-    if (!n) throw { codigo: 'formato', mensaje: 'No he podido separar las frases. Vuelve a probar.' };
+    // las que no cuadran no se pierden: van al final
+    sueltos.forEach(x => { segs.push(' '); segs.push(x); });
+    const e = j.estado || {};
     const a = j.also || {}, f = j.en_una_frase || {};
     return {
+      resumen: limpia(j.resumen),
+      estado: ESTADOS.indexOf(limpia(e.etiqueta)) >= 0 ? { etiqueta: limpia(e.etiqueta), explicacion: limpia(e.explicacion), fuente: limpia(e.fuente) || 'sin fuente', url: urlOK(e.url) } : null,
       titulo: limpia(j.titulo_corto) || 'Sin título',
       fuenteOriginal: limpia(j.fuente_original) || (j.es_pregunta ? 'tu pregunta' : 'lo que te llegó'),
       esPregunta: j.es_pregunta === true,
       gancho: limpia(j.gancho).slice(0, 140),
-      preguntas: preguntasOK(j.preguntas).slice(0, 4),
+      preguntas: preguntasOK(j.preguntas).slice(0, 5),
       original: segs, tramos,
       portada: { neutro: limpia(f.neutro), complice: limpia(f.complice) || limpia(f.neutro) },
       paraChat: limpia(j.para_el_chat).replace(/\*\*/g, '').slice(0, 280),
@@ -260,5 +286,5 @@ PREGUNTA de la persona: «${pregunta}»
   };
   const estadisticas = () => pedir('/stats');
 
-  window.MOTOR = { previa, leer, revisar, responder, probarClave, ajustes, modo, proxy, VERS, guardarPieza, leerPieza, huella, memoria, evento, yo, invitaciones, estadisticas };
+  window.MOTOR = { ESTADOS, previa, leer, revisar, responder, probarClave, ajustes, modo, proxy, VERS, guardarPieza, leerPieza, huella, memoria, evento, yo, invitaciones, estadisticas };
 })();
