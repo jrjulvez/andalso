@@ -591,7 +591,7 @@ ${todas.map(k => `<div style="border-top:2px solid var(--ink);padding-top:10px;d
   // ---------- ajustes y administración ----------
   function vAjustes() {
     const modo = M.modo(), yo = S.yo, maestro = yo && yo.rol === 'maestro', A = S.admin || {};
-    const nombres = { abre: 'Aperturas', pieza: 'Piezas nuevas', memoria: 'Desde memoria', pregunta: 'Preguntas', compartida: 'Compartidas', enlace_abierto: 'Enlaces abiertos', receptor_crea: 'Receptores que crean', vuelta7: 'Vuelven a los 7 días', llamada: 'Llamadas a la IA' };
+    const nombres = { abre: 'Aperturas', pieza: 'Piezas nuevas', memoria: 'Desde memoria', pregunta: 'Preguntas', compartida: 'Compartidas', enlace_abierto: 'Enlaces abiertos', receptor_crea: 'Receptores que crean', vuelta7: 'Vuelven a los 7 días', llamada: 'Llamadas a la IA', error_red: 'Errores de conexión', error_formato: 'Respuestas incompletas', error_ia: 'Errores de la IA', error_otro: 'Otros errores' };
     return `<header class="top">${logoBtn(22)}<button class="btn" data-go="inicio" style="min-height:36px;font-size:13px">Volver</button></header>
 <main class="pad" style="display:flex;flex-direction:column;gap:18px">
 <h1 style="margin:6px 0 0;font-size:30px;line-height:1.02;letter-spacing:-.025em">Ajustes</h1>
