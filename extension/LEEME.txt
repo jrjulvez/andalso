@@ -1,0 +1,13 @@
+and also para Chrome (versión de prueba)
+
+Instalar:
+1. Descomprime esta carpeta.
+2. En Chrome, abre chrome://extensions y activa «Modo de desarrollador» (arriba a la derecha).
+3. Pulsa «Cargar descomprimida» y elige la carpeta.
+4. Fija el icono de and also en la barra (icono del puzle → chincheta).
+
+Antes de usarla, abre una vez en ese Chrome tu enlace de invitación (…/andalso/?c=…).
+
+Usar:
+- En cualquier noticia, pulsa el icono de and also: se abre and also y empieza a leerla.
+- Selecciona un texto, botón derecho → «Cuéntame el resto de…».

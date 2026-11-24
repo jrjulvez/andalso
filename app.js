@@ -778,5 +778,7 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     const t = [u.get('t') || u.get('text') || '', u.get('u') || u.get('url') || ''].filter(Boolean).join(' ').trim();
     if (t) { S.entrada.texto = t; history.replaceState(null, '', location.pathname); }
     render();
+    // desde la extensión de Chrome: empieza a leer solo si hay acceso
+    if (t && u.get('go') === '1' && (M.modo() === 'invitado' || M.modo() === 'clave')) empezar();
   })();
 })();

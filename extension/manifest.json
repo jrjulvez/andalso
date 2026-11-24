@@ -1,0 +1,10 @@
+{
+  "manifest_version": 3,
+  "name": "and also",
+  "version": "1.0",
+  "description": "Lo que te llega es una parte. Un clic en cualquier noticia y and also te cuenta el resto, con fuentes.",
+  "action": { "default_title": "Cuéntame el resto de esta página", "default_icon": { "16": "icon-16.png", "32": "icon-32.png", "48": "icon-48.png" } },
+  "icons": { "16": "icon-16.png", "48": "icon-48.png", "128": "icon-128.png" },
+  "background": { "service_worker": "fondo.js" },
+  "permissions": ["activeTab", "contextMenus"]
+}
