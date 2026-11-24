@@ -125,14 +125,14 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
 4. «original»: ${largo ? 'el texto es LARGO: no lo copies entero. Escribe solo sus 3 a 6 afirmaciones centrales, cada una copiada palabra por palabra del texto, separadas por un espacio.' : 'si le ha llegado, el texto retecleado tal cual (sin datos de personas privadas; si es un enlace, el titular). Si es una pregunta, lo que se suele oír o dar por hecho sobre ese tema, en una a tres frases neutras y sin cifras inventadas.'}
 5. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto», un trozo copiado EXACTAMENTE del original. Prioriza lo que más importa y lo más dudoso. Para cada una busca y da veredicto, «porque» (UNA frase de 15 palabras como mucho, que se entienda sola), la fuente y su «url».
 6. «also»: el hecho comprobado que más amplía lo que llegó o mejor responde a la pregunta: lo que también es verdad y no se cuenta. Mejor con un número que dé contexto. «grande»: 14 palabras como mucho. Siempre con fuente y url.
-7. «en_una_frase»: lo que hay detrás, en dos tonos. Empieza por el contexto, no por un veredicto tipo «falso». No puede contradecir los veredictos ni el estado, ni cerrar nada abierto. Marca como mucho DOS palabras con **asteriscos**. neutro: claro y directo. complice: empieza dando la razón que el otro tiene («yo también lo pensé…»).
+7. «en_una_frase»: lo que hay detrás, en una frase que impacte leída sola (20 palabras como mucho). Empieza por el contexto, no por un veredicto tipo «falso». No puede contradecir los veredictos ni el estado, ni cerrar nada abierto. Marca como mucho DOS palabras con **asteriscos**.
 8. «para_el_chat»: lo que la persona escribiría en el grupo: una o dos frases, como un amigo, sin dar lecciones ni decir «falso», sin asteriscos.
 9. «gancho»: la idea central de lo que llegó en 12 palabras como mucho, tal como la diría quien lo manda.
 10. «preguntas»: 5 hilos para seguir investigando ESTE caso, como preguntas: contexto, causas, comparación, a quién afecta, qué dicen otros expertos, qué falta por saber. Concretas, con nombres y cifras del caso, 9 palabras como mucho. Nunca «¿es verdad?».
 11. «titulo_corto»: 2–4 palabras. «fuente_original»: qué es («post de un foro», «captura de un titular», «texto reenviado», «tu pregunta»).
 Sé breve en todo: la respuesta tiene que caber entera.
 
-<json>{"resumen":"","estado":{"etiqueta":"","explicacion":"","fuente":"","url":""},"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"grande":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":{"neutro":"","complice":""},"para_el_chat":"","gancho":"","preguntas":["","","","",""]}</json>` });
+<json>{"resumen":"","estado":{"etiqueta":"","explicacion":"","fuente":"","url":""},"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"grande":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":"","para_el_chat":"","gancho":"","preguntas":["","","","",""]}</json>` });
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: c }], busquedas: DEF.busquedas, maxTokens: 8000, señal });
     return { datos: normalizarLectura(sacarJSON(r.texto)), consumo: r.consumo, errBusqueda: r.errBusqueda };
   }
@@ -174,7 +174,7 @@ Sé breve en todo: la respuesta tiene que caber entera.
     // las que no cuadran no se pierden: van al final
     sueltos.forEach(x => { segs.push(' '); segs.push(x); });
     const e = j.estado || {};
-    const a = j.also || {}, f = j.en_una_frase || {};
+    const a = j.also || {}, f = typeof j.en_una_frase === 'string' ? { neutro: j.en_una_frase } : (j.en_una_frase || {});
     return {
       resumen: limpia(j.resumen),
       estado: ESTADOS.indexOf(limpia(e.etiqueta)) >= 0 ? { etiqueta: limpia(e.etiqueta), explicacion: limpia(e.explicacion), fuente: limpia(e.fuente) || 'sin fuente', url: urlOK(e.url) } : null,
@@ -184,7 +184,7 @@ Sé breve en todo: la respuesta tiene que caber entera.
       gancho: limpia(j.gancho).slice(0, 140),
       preguntas: preguntasOK(j.preguntas).slice(0, 5),
       original: segs, tramos,
-      portada: { neutro: limpia(f.neutro), complice: limpia(f.complice) || limpia(f.neutro) },
+      portada: { neutro: limpia(f.neutro) },
       paraChat: limpia(j.para_el_chat).replace(/\*\*/g, '').slice(0, 280),
       also: limpia(a.grande) ? { big: limpia(a.grande), ver: verOK(a.veredicto || 'es así'), fuente: limpia(a.fuente) || 'sin fuente', url: urlOK(a.url) } : null
     };
@@ -193,7 +193,7 @@ Sé breve en todo: la respuesta tiene que caber entera.
   // ---------- 2. revisión de calidad: una segunda mirada antes de compartir ----------
   async function revisar(L, señal) {
     const trs = L.original.filter(s => typeof s !== 'string').map(s => ({ k: s.k, texto: s.t, veredicto: L.tramos[s.k].ver, porque: L.tramos[s.k].porque, fuente: L.tramos[s.k].fuente, url: L.tramos[s.k].url }));
-    const entrada = { tramos: trs, also: L.also, en_una_frase: L.portada, para_el_chat: L.paraChat };
+    const entrada = { tramos: trs, also: L.also, en_una_frase: L.portada.neutro, para_el_chat: L.paraChat };
     const txt = `Revisa esta pieza antes de que se comparta. No busques nada: juzga solo con lo que hay.
 ${JSON.stringify(entrada)}
 
@@ -204,7 +204,7 @@ Comprueba:
 4. Neutralidad política.
 Cambia SOLO lo que falle; si todo está bien, devuelve los mismos textos. «cambios»: una línea por cosa cambiada.
 
-<json>{"cambios":[""],"tramos":[{"k":"","veredicto":"","porque":""}],"also":{"grande":"","veredicto":""},"en_una_frase":{"neutro":"","complice":""},"para_el_chat":""}</json>`;
+<json>{"cambios":[""],"tramos":[{"k":"","veredicto":"","porque":""}],"also":{"grande":"","veredicto":""},"en_una_frase":"","para_el_chat":""}</json>`;
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: txt }], maxTokens: 2500, señal });
     const j = sacarJSON(r.texto);
     const cambios = (Array.isArray(j.cambios) ? j.cambios : []).map(limpia).filter(Boolean);
@@ -214,7 +214,8 @@ Cambia SOLO lo que falle; si todo está bien, devuelve los mismos textos. «camb
       if (limpia(t.porque)) o.porque = limpia(t.porque);
     });
     if (L.also && j.also) { if (limpia(j.also.grande)) L.also.big = limpia(j.also.grande); if (VERS.indexOf(j.also.veredicto) >= 0) L.also.ver = j.also.veredicto; }
-    if (j.en_una_frase) { if (limpia(j.en_una_frase.neutro)) L.portada.neutro = limpia(j.en_una_frase.neutro); if (limpia(j.en_una_frase.complice)) L.portada.complice = limpia(j.en_una_frase.complice); }
+    if (typeof j.en_una_frase === 'string' && limpia(j.en_una_frase)) L.portada.neutro = limpia(j.en_una_frase);
+    else if (j.en_una_frase && limpia(j.en_una_frase.neutro)) L.portada.neutro = limpia(j.en_una_frase.neutro);
     if (limpia(j.para_el_chat)) L.paraChat = limpia(j.para_el_chat).replace(/\*\*/g, '').slice(0, 280);
     return { cambios, consumo: r.consumo };
   }
@@ -233,8 +234,11 @@ PREGUNTA de la persona: «${pregunta}»
 
 <json>{"relacion":true,"titulo":"","veredicto":"","fuente":"","respuesta":"","items":[{"texto":"","veredicto":"","fuente":"","url":""}],"siguientes":["",""]}</json>`;
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: txt }], busquedas: DEF.busquedas, maxTokens: 3000, señal });
-    const j = sacarJSON(r.texto);
-    if (j.relacion === false) return { ninguna: true, r: limpia(j.respuesta) || 'No encuentro relación entre tu pregunta y esto.', consumo: r.consumo };
+    return Object.assign(leerRespuesta(r.texto, pregunta), { consumo: r.consumo });
+  }
+  function leerRespuesta(texto, pregunta) {
+    const j = sacarJSON(texto);
+    if (j.relacion === false) return { ninguna: true, r: limpia(j.respuesta) || 'No encuentro relación entre tu pregunta y esto.' };
     const items = (j.items || []).map(e => ({ t: limpia(e.texto), ver: verOK(e.veredicto), f: limpia(e.fuente) || 'sin fuente', url: urlOK(e.url) })).filter(e => e.t).slice(0, 3);
     if (!items.length) {
       if (limpia(j.respuesta)) items.push({ t: limpia(j.respuesta), ver: 'sin fuente', f: 'sin fuente', url: '' });
@@ -244,7 +248,16 @@ PREGUNTA de la persona: «${pregunta}»
     const peor = items.map(e => e.ver).sort((a, b) => rango(b) - rango(a))[0];
     const q0 = pregunta.trim().replace(/^¿?\s*/, '').replace(/\s*\??$/, '');
     const q = '¿' + q0.charAt(0).toUpperCase() + q0.slice(1) + '?';
-    return { siguientes: preguntasOK(j.siguientes).slice(0, 2), nodo: { q, titulo: limpia(j.titulo) || items[0].t, ver: verOK(j.veredicto || peor), fuente: limpia(j.fuente) || items[0].f, r: limpia(j.respuesta), items }, consumo: r.consumo };
+    return { siguientes: preguntasOK(j.siguientes).slice(0, 2), nodo: { q, titulo: limpia(j.titulo) || items[0].t, ver: verOK(j.veredicto || peor), fuente: limpia(j.fuente) || items[0].f, r: limpia(j.respuesta), items } };
+  }
+  // quien recibe un enlace puede preguntar sobre esa pieza sin invitación (con límite diario)
+  async function preguntarSobrePieza(id, pregunta) {
+    let r;
+    try { r = await fetch(proxy() + '/r/' + encodeURIComponent(id), { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ pregunta }) }); }
+    catch (e) { throw { codigo: 'red', mensaje: 'No llego al servidor. Prueba en un rato.' }; }
+    let d = {}; try { d = await r.json(); } catch (e) {}
+    if (!r.ok) throw { codigo: 'api', mensaje: (d.error && d.error.type === 'cupo') ? 'Por hoy se han agotado las preguntas abiertas de esta pieza. Para seguir, pide una invitación.' : 'No ha funcionado. Prueba en un rato.' };
+    return leerRespuesta((d.content || []).filter(b => b.type === 'text').map(b => b.text).join(''), pregunta);
   }
 
   async function probarClave() {
@@ -264,6 +277,10 @@ PREGUNTA de la persona: «${pregunta}»
   };
   const guardarPieza = async obj => (await pedir('/p', { metodo: 'POST', cuerpo: obj })).id;
   const leerPieza = async id => pedir('/p/' + encodeURIComponent(id), { anonimo: true });
+  async function subirPortada(id, blob) {
+    try { await fetch(proxy() + '/i/' + encodeURIComponent(id), { method: 'PUT', headers: { 'content-type': 'image/jpeg', 'x-andalso-codigo': ajustes.codigo || '' }, body: blob }); } catch (e) {}
+  }
+  const enlaceDe = id => proxy() + '/v/' + id;
   async function huella(texto) {
     const t = String(texto || '').toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[^a-z0-9ñ ]+/g, ' ').replace(/\s+/g, ' ').trim();
     if (t.length < 12 || !(window.crypto && crypto.subtle)) return '';
@@ -286,5 +303,5 @@ PREGUNTA de la persona: «${pregunta}»
   };
   const estadisticas = () => pedir('/stats');
 
-  window.MOTOR = { ESTADOS, previa, leer, revisar, responder, probarClave, ajustes, modo, proxy, VERS, guardarPieza, leerPieza, huella, memoria, evento, yo, invitaciones, estadisticas };
+  window.MOTOR = { preguntarSobrePieza, subirPortada, enlaceDe, ESTADOS, previa, leer, revisar, responder, probarClave, ajustes, modo, proxy, VERS, guardarPieza, leerPieza, huella, memoria, evento, yo, invitaciones, estadisticas };
 })();

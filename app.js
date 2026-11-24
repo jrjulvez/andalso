@@ -52,7 +52,7 @@
 
   // ---------- la pieza ----------
   function nuevaPieza(L) {
-    const P = Object.assign({ v: 2, id: 'p' + Date.now().toString(36), creada: new Date().toISOString(), fecha: fecha(), N: {}, hechas: [], destino: 'chat', tono: 'neutro', conEnlace: false, consumo: { entrada: 0, salida: 0, busquedas: 0 }, revision: { estado: 'pendiente', cambios: [] } }, L);
+    const P = Object.assign({ v: 2, id: 'p' + Date.now().toString(36), creada: new Date().toISOString(), fecha: fecha(), N: {}, hechas: [], destino: 'chat', tono: 'neutro', conEnlace: true, consumo: { entrada: 0, salida: 0, busquedas: 0 }, revision: { estado: 'pendiente', cambios: [] } }, L);
     P.fichas = fichasPorDefecto(P);
     return P;
   }
@@ -81,7 +81,7 @@
     const sel = (P.fichas || []).filter(k => valida(P, k) && k !== 'gancho');
     return ['gancho'].concat(candidatas(P).filter(k => esta(sel, k))).slice(0, MAX_FICHAS);
   }
-  const titular = P => P.portada[P.tono] || P.portada.neutro;
+  const titular = P => P.portada.neutro;
 
   // ---------- fichas (imágenes de 1080 × 1350) ----------
   function slideWrap(n, tot, dark, inner) {
@@ -97,7 +97,7 @@
 ${P.estado ? `<span style="margin-top:34px;align-self:flex-start;background:${INK};color:${PAPER};font-size:30px;font-weight:700;padding:10px 18px;letter-spacing:.01em">${esc(ETQ[P.estado.etiqueta] || P.estado.etiqueta)}</span>` : ''}
 <span style="margin-top:auto;font-size:30px;font-weight:500">lo que hay detrás</span>
 <span style="margin-top:16px;font-size:${largo > 80 ? 92 : largo > 50 ? 112 : 132}px;line-height:.95;font-weight:700;letter-spacing:-.04em">${resaltar(t)}</span>
-<div style="height:70px"></div>${pie(nP + ' puntos comprobados con fuentes')}`);
+<div style="height:70px"></div>${pie(nP + ' puntos comprobados' + (P.conEnlace ? ' · el resto, en el enlace' : ' con fuentes'))}`);
     }
     if (k === 'also') {
       const big = P.also.big;
@@ -122,7 +122,7 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
   const slidesHTML = (P, keys) => keys.map((k, i) => slideHTML(P, k, i + 1, keys.length));
   function escalar() {
     app.querySelectorAll('.slidebox').forEach(b => {
-      const w = b.classList.contains('thumb') ? 104 : b.classList.contains('fill') ? Math.min(420, b.parentElement.clientWidth) : Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
+      const w = b.parentElement.classList.contains('wa-img') ? b.parentElement.clientWidth : b.parentElement.classList.contains('wa-link') ? 64 : b.classList.contains('thumb') ? 104 : b.classList.contains('fill') ? Math.min(420, b.parentElement.clientWidth) : Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
       b.style.width = w + 'px'; b.style.height = Math.round(w * 1.25) + 'px'; b.firstChild.style.transform = 'scale(' + (w / 1080) + ')';
     });
   }
@@ -340,22 +340,19 @@ ${S.det[k] ? detalleHTML(P, k) : ''}</article>`;
     }).join('');
     const body = `<div style="display:flex;flex-direction:column">
 ${P.avisoBusqueda ? '<div class="pad" style="padding-bottom:0"><div class="err">Alguna búsqueda falló mientras leía. Revisa las fuentes antes de mandar nada.</div></div>' : ''}
-<section class="pad" style="display:flex;flex-direction:column;gap:8px;padding-bottom:14px">
-${S.verOriginal ? `<p style="margin:4px 0 0;font-size:15px;line-height:1.6;color:var(--grey)">${esc(P.original.map(s => typeof s === 'string' ? s : s.t).join(''))}</p>` : ''}
-<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center"><button class="link" data-veroriginal style="color:var(--grey);font-weight:500">${S.verOriginal ? 'Ocultar el texto' : 'Ver el texto entero'}</button>${P.veces > 1 ? `<span class="small">${P.veces} personas han preguntado esto</span>` : ''}</div>
-${revHTML ? `<span class="small" style="line-height:1.4">${revHTML}</span>` : ''}
-${S.verAjustes && rev.cambios && rev.cambios.length ? `<ul class="small" style="margin:0;padding-left:18px;line-height:1.45">${rev.cambios.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
-</section>
+
 <section class="pad" style="display:flex;flex-direction:column;gap:12px;padding-top:0;padding-bottom:16px">
 <div class="seg" role="radiogroup" aria-label="para dónde">${[['chat', 'Para el chat', '1 ficha + texto'], ['redes', 'Para redes', 'carrusel de ' + (chat ? Math.min(MAX_FICHAS, 1 + (P.fichas || []).filter(k => k !== 'gancho' && valida(P, k)).length) : d.length)]].map(([k, l, s]) => `<button class="btn ${P.destino === k ? 'on' : ''}" role="radio" aria-checked="${P.destino === k}" data-destino="${k}" style="min-height:52px;display:flex;flex-direction:column;justify-content:center;gap:1px"><span>${l}</span><span style="font-size:11px;font-weight:500">${s}</span></button>`).join('')}</div>
-<div class="seg" role="radiogroup" aria-label="tono">${[['neutro', 'Te lo explico'], ['complice', 'Yo también lo pensé']].map(([k, l]) => `<button class="btn ${P.tono === k ? 'on' : ''}" role="radio" aria-checked="${P.tono === k}" data-tono="${k}">${l}</button>`).join('')}</div>
+
 </section>
-<section class="pad" style="display:flex;flex-direction:column;gap:22px;padding-top:0">${cartas}</section>
-<section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:6px">
-<span style="font-size:14px;font-weight:600;color:var(--grey)">Sigue preguntando</span>
-${sugeridas.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}
-<form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="${sugeridas.length ? 'O escribe la tuya' : 'Escribe tu pregunta'}" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
-<span class="small">Cada respuesta se convierte en una ficha.</span>
+<section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:0">
+<h2 class="h2">Así le llegará</h2>
+<div class="wa"><div class="wa-b">
+<div class="wa-imgs">${d.slice(0, 3).map((k, i) => `<div class="wa-img"><div class="slidebox thumb">${slideHTML(P, k, i + 1, d.length)}</div>${i === 2 && d.length > 3 ? `<span class="wa-mas">+${d.length - 3}</span>` : ''}</div>`).join('')}</div>
+${P.destino === 'chat' ? `<p id="wa-t" class="wa-t">${esc(P.paraChat || plano(titular(P)))}</p>` : ''}
+${P.conEnlace ? `<div class="wa-link"><div class="slidebox thumb">${slideHTML(P, 'gancho', 1, 1)}</div><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><b style="font-size:14px;line-height:1.25">${esc(plano(titular(P)))}</b><span style="font-size:12px;line-height:1.3;color:var(--grey);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(P.resumen || 'El resto, con fuentes')}</span><span style="font-size:12px;color:var(--grey)">and also · enlace</span></div></div>` : ''}
+</div></div>
+<span class="small" style="line-height:1.4">${P.conEnlace ? 'Al tocar el enlace se abre la explicación completa en and also, con fuentes, y puede preguntar lo que quiera.' : 'Sin enlace solo llegan las imágenes: quien lo reciba no podrá ver las fuentes.'}</span>
 </section>
 <section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:6px">
 <label for="chat" style="font-size:14px;font-weight:600;color:var(--grey)">${chat ? 'Texto para el chat' : 'Texto para acompañar'}</label>
@@ -365,11 +362,20 @@ ${P.conEnlace ? `<div style="display:flex;gap:8px;align-items:center;min-height:
 ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
 ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fichas.files)) ? alternativasHTML(P) : ''}
 </section>
+<section class="pad" style="display:flex;flex-direction:column;gap:6px;padding-bottom:6px"><h2 class="h2">${chat ? 'La ficha que se envía y el resto, por si quieres cambiar algo' : 'Qué fichas van en el carrusel'}</h2></section>
+<section class="pad" style="display:flex;flex-direction:column;gap:22px;padding-top:0">${cartas}</section>
+<section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:6px">
+<span style="font-size:14px;font-weight:600;color:var(--grey)">Sigue preguntando</span>
+${sugeridas.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}
+<form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="${sugeridas.length ? 'O escribe la tuya' : 'Escribe tu pregunta'}" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
+<span class="small">Cada respuesta se convierte en una ficha.</span>
+</section>
+
 </div>`;
     const n = d.length, que = (chat ? 'la ficha y el texto' : 'las ' + n + ' fichas') + (P.conEnlace && !(S.corto && S.corto.error) ? (chat ? ' con enlace' : ' y el enlace') : '');
     const bar = `<div class="bar" style="flex-direction:row">${rev.estado === 'en_curso' ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Revisando antes de compartir…</span></button>` : fichasListas(P) && enlaceListo(P) ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px">${S.quiere ? 'Listo: compartir ' : 'Compartir '}${que}</button>` : `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Preparando ${chat ? 'la ficha' : 'las fichas'}…</span></button>`}</div>`;
     return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0">${logoBtn(22)}<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div><button class="btn" data-modo="investigar" style="min-height:36px;font-size:13px;flex:none">← Volver</button></header>
-<main style="border-top:2px solid var(--ink)"><div class="pad" style="padding-bottom:0"><h1 style="margin:0;font-size:26px;line-height:1.05;letter-spacing:-.02em">Componer una ficha</h1><p class="small" style="margin:6px 0 0">Elige para dónde, el tono y qué fichas van. Todo sale de lo que has investigado.</p></div>${body}</main>${bar}${hojaHTML()}`;
+<main style="border-top:2px solid var(--ink)"><div class="pad" style="padding-bottom:0"><h1 style="margin:0;font-size:26px;line-height:1.05;letter-spacing:-.02em">Componer una ficha</h1><p class="small" style="margin:6px 0 0">Mira cómo le llegará y elige qué va. Todo sale de lo que has investigado.</p></div>${body}</main>${bar}${hojaHTML()}`;
   }
 
   const ETQ = { 'hecho asentado': 'Hecho asentado', 'confirmado': 'Confirmado', 'anunciado': 'Anunciado, sin confirmar', 'en revisión': 'En revisión', 'en discusión': 'En discusión', 'desmentido': 'Desmentido', 'opinión': 'Opinión', 'sin datos': 'Sin datos suficientes' };
@@ -384,45 +390,46 @@ ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fi
 ${n.items.map(e => `<div class="fila"><span class="lab" style="font-size:11px">${esc(e.ver)}</span><span style="font-size:15px;line-height:1.35">${esc(e.t)}</span><span style="font-size:13px;color:var(--grey)">${fuente(e.f, e.url)}</span></div>`).join('')}
 <button class="link" data-quitaq="${k}" style="align-self:flex-start;color:var(--grey);font-size:13px">Quitar</button></article>`;
   }
+  function lecturaHTML(P, revHTML) {
+    const rev = P.revision || {};
+    return `<section class="hero">
+<span class="hero-l">${P.esPregunta ? 'Preguntas por' : 'Te ha llegado que'}</span>
+<span class="hero-g">«${esc(ganchoDe(P))}»</span>
+${P.estado ? `<span class="hero-etq">${esc(ETQ[P.estado.etiqueta] || P.estado.etiqueta)}</span>` : ''}
+<span class="hero-l" style="margin-top:6px">Lo que hay detrás</span>
+<span class="hero-t">${resaltar(titular(P))}</span>
+<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center;margin-top:4px"><button class="link" data-veroriginal style="color:#BDBBB5;font-weight:500">${S.verOriginal ? 'Ocultar lo que llegó' : 'Ver lo que llegó'}</button>${P.veces > 1 ? `<span style="font-size:13px;color:#BDBBB5">${P.veces} personas han preguntado esto</span>` : ''}</div>
+${S.verOriginal ? `<p style="margin:0;font-size:15px;line-height:1.55;color:#D9D7D1">${esc(P.original.map(x => typeof x === 'string' ? x : x.t).join(''))}</p>` : ''}
+${revHTML ? `<span style="font-size:13px;line-height:1.4;color:#BDBBB5">${revHTML}</span>` : ''}
+${S.verAjustes && rev.cambios && rev.cambios.length ? `<ul style="margin:0;padding-left:18px;font-size:13px;line-height:1.45;color:#D9D7D1">${rev.cambios.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
+</section>
+${P.resumen || P.estado ? `<section class="pad" style="display:flex;flex-direction:column;gap:12px">
+${P.resumen ? `<p class="lead">${esc(P.resumen)}</p>` : ''}
+${P.estado ? `<p style="margin:0;font-size:16px;line-height:1.5"><b>${esc(ETQ[P.estado.etiqueta] || P.estado.etiqueta)}.</b> ${esc(P.estado.explicacion)} <span class="small">${fuente(P.estado.fuente, P.estado.url)}</span></p>` : ''}
+</section>` : ''}
+${P.also ? `<section class="pad" style="padding-top:4px"><div class="also"><span class="also-l">Lo que también es verdad</span><span class="also-t">${esc(P.also.big)}</span><span class="small">${fuente(P.also.fuente, P.also.url)}</span></div></section>` : ''}
+<section class="pad" style="display:flex;flex-direction:column;gap:0">
+<h2 class="h2" style="margin-bottom:10px">${P.esPregunta ? 'Lo que se suele dar por hecho' : 'Lo que dice, punto por punto'}</h2>
+${trs(P).map(seg => { const t = P.tramos[seg.k]; return `<div class="punto"><span class="vtag v-${MK[t.ver]}">${esc(VERBO[t.ver])}</span><span style="font-size:16px;line-height:1.35;font-weight:500">${esc(seg.t)}</span><span style="font-size:14px;line-height:1.4;color:var(--grey)">${esc(t.porque)} · ${fuente(t.fuente, t.url)}</span></div>`; }).join('')}
+</section>
+`;
+  }
   function vInvestigar() {
     const P = S.P, rev = P.revision || {};
     const hechas = (P.hechas || []).map(x => x.toLowerCase());
     const hilos = (P.preguntas || []).filter(q => !esta(hechas, q.toLowerCase())).slice(0, 5);
     const tuyas = Object.keys(P.N || {}).filter(k => P.N[k]);
     const revHTML = rev.estado === 'en_curso' ? '<span class="think">Revisando veredictos y fuentes…</span>'
-      : rev.estado === 'hecho' ? (rev.memoria ? 'Respuesta ya revisada' : rev.cambios.length ? `Revisado · ${rev.cambios.length} ${rev.cambios.length === 1 ? 'ajuste' : 'ajustes'} <button class="link" data-verajustes style="font-size:13px;padding:0">ver</button>` : 'Revisado: todo cuadra con sus fuentes')
+      : rev.estado === 'hecho' ? (rev.memoria ? 'Respuesta ya revisada' : rev.cambios.length ? `Revisado · ${rev.cambios.length} ${rev.cambios.length === 1 ? 'ajuste' : 'ajustes'} <button class="link" data-verajustes style="font-size:13px;padding:0;color:inherit">ver</button>` : 'Revisado: todo cuadra con sus fuentes')
         : rev.estado === 'error' ? 'No se ha podido revisar: mira las fuentes' : '';
-    const body = `<div style="display:flex;flex-direction:column">
-${P.avisoBusqueda ? '<div class="pad" style="padding-bottom:0"><div class="err">Alguna búsqueda falló mientras leía. Revisa las fuentes.</div></div>' : ''}
-<section class="pad" style="display:flex;flex-direction:column;gap:10px">
-<span style="font-size:14px;font-weight:600;color:var(--grey)">${P.esPregunta ? 'Preguntas por' : 'Te ha llegado que'}</span>
-<span style="font-size:20px;line-height:1.3;font-weight:500">«${esc(ganchoDe(P))}»</span>
-<div style="display:flex;gap:16px;flex-wrap:wrap;align-items:center"><button class="link" data-veroriginal style="color:var(--grey);font-weight:500">${S.verOriginal ? 'Ocultar' : 'Ver lo que llegó'}</button>${P.veces > 1 ? `<span class="small">${P.veces} personas han preguntado esto</span>` : ''}</div>
-${S.verOriginal ? `<p style="margin:0;font-size:15px;line-height:1.6;color:var(--grey)">${esc(P.original.map(x => typeof x === 'string' ? x : x.t).join(''))}</p>` : ''}
-${revHTML ? `<span class="small" style="line-height:1.4">${revHTML}</span>` : ''}
-${S.verAjustes && rev.cambios && rev.cambios.length ? `<ul class="small" style="margin:0;padding-left:18px;line-height:1.45">${rev.cambios.map(c => `<li>${esc(c)}</li>`).join('')}</ul>` : ''}
-</section>
-${P.resumen ? `<section class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:8px"><h2 class="h2">Qué es</h2><p style="margin:0;font-size:17px;line-height:1.5">${esc(P.resumen)}</p></section>` : ''}
-${P.estado ? `<section class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:8px"><h2 class="h2">En qué punto está</h2>${estadoHTML(P)}</section>` : ''}
-<section style="background:var(--ink);color:var(--paper);padding:22px 20px 24px;display:flex;flex-direction:column;gap:8px">
-<span style="font-size:14px;font-weight:600;color:#BDBBB5">Lo que hay detrás</span>
-<span style="font-size:28px;line-height:1.05;font-weight:700;letter-spacing:-.025em">${resaltar(P.portada.neutro)}</span>
-</section>
-${P.also ? `<section class="pad" style="display:flex;flex-direction:column;gap:8px"><h2 class="h2">Lo que también es verdad</h2><span style="font-size:21px;line-height:1.2;font-weight:700">${esc(P.also.big)}</span><span class="small">${esc(P.also.ver)} · ${fuente(P.also.fuente, P.also.url)}</span></section>` : ''}
-<section class="pad" style="display:flex;flex-direction:column;gap:0">
-<h2 class="h2" style="margin-bottom:8px">${P.esPregunta ? 'Lo que se suele dar por hecho' : 'Lo que dice, frase a frase'}</h2>
-${trs(P).map(seg => { const t = P.tramos[seg.k]; return `<div style="border-top:2px solid var(--ink);padding:12px 0;display:flex;flex-direction:column;gap:4px"><span style="font-size:12px;font-weight:700;letter-spacing:.02em;text-transform:uppercase">${esc(t.ver)}</span><span style="font-size:16px;line-height:1.35;font-weight:500">${mark(esc(seg.t), t.ver)}</span><span style="font-size:15px;line-height:1.35;color:var(--grey)">${esc(t.porque)} <span style="font-size:12px">· ${fuente(t.fuente, t.url)}</span></span></div>`; }).join('')}
-<div style="border-top:2px solid var(--ink)"></div>
-</section>
-${tuyas.length ? `<section class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:14px"><h2 class="h2">Lo que has ido descubriendo</h2>${tuyas.map(k => bloqueHTML(P, k)).join('')}</section>` : ''}
-<section class="pad" style="padding-top:${tuyas.length ? 8 : 0}px;display:flex;flex-direction:column;gap:10px">
+    const body = `${lecturaHTML(P, revHTML)}
+${tuyas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:14px"><h2 class="h2">Lo que has ido descubriendo</h2>${tuyas.map(k => bloqueHTML(P, k)).join('')}</section>` : ''}
+<section class="pad" style="padding-top:${tuyas.length ? 8 : 4}px;display:flex;flex-direction:column;gap:10px">
 <h2 class="h2">Sigue el hilo</h2>
 ${hilos.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}
 <form id="fq" class="composer" style="gap:8px;padding:10px"><label for="q" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="q" type="text" autocomplete="off" enterkeyhint="send" placeholder="${hilos.length ? 'O pregunta lo que quieras' : 'Pregunta lo que quieras'}" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px">Preguntar</button></div></form>
-<span class="small">Cada respuesta se suma aquí, con sus fuentes.</span>
-</section>
-</div>`;
-    const bar = `<div class="bar" style="flex-direction:row"><button class="btn dark" data-modo="componer" style="flex:1 1 auto;min-height:52px;font-size:16px">Componer una ficha para compartir</button></div>`;
+</section>`;
+    const bar = `<div class="bar" style="flex-direction:row"><button class="btn dark" data-modo="componer" style="flex:1 1 auto;min-height:52px;font-size:16px">Contarlo →</button></div>`;
     return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0">${logoBtn(22)}<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div></header>
 <main style="border-top:2px solid var(--ink)">${body}</main>${bar}${hojaHTML()}`;
   }
@@ -448,7 +455,7 @@ ${hilos.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span
   const firma = o => { const t = JSON.stringify(o); let h = 0; for (let i = 0; i < t.length; i++) h = (h * 31 + t.charCodeAt(i)) | 0; return t.length + ':' + h; };
   function piezaMin(P) {
     const N = {}; Object.keys(P.N || {}).forEach(k => { N[k] = P.N[k]; });
-    return { v: 2, resumen: P.resumen || '', estado: P.estado || null, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: !!P.esPregunta, gancho: P.gancho || '', original: P.original, tramos: P.tramos, portada: P.portada, also: P.also, N, fichas: P.fichas, destino: P.destino, tono: P.tono, fecha: P.fecha };
+    return { v: 2, preguntas: (P.preguntas || []).slice(0, 6), resumen: P.resumen || '', estado: P.estado || null, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: !!P.esPregunta, gancho: P.gancho || '', original: P.original, tramos: P.tramos, portada: P.portada, also: P.also, N, fichas: P.fichas, destino: P.destino, tono: P.tono, fecha: P.fecha };
   }
   const firmaFichas = P => firma({ d: diapos(P), m: piezaMin(P) });
   const enlaceListo = P => !P.conEnlace || (S.corto && S.corto.error) || (P.corto && P.corto.firma === firma(piezaMin(P)));
@@ -457,8 +464,23 @@ ${hilos.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span
     const P = S.P, min = piezaMin(P), f = firma(min);
     if (P.corto && P.corto.firma === f) return P.corto.url;
     const id = await M.guardarPieza(min);
-    P.corto = { firma: f, url: location.origin + location.pathname + '#v=' + id }; guardaP();
+    P.corto = { firma: f, url: M.enlaceDe(id), id }; guardaP();
+    portadaJPEG(P).then(b => { if (b) M.subirPortada(id, b); });
     return P.corto.url;
+  }
+  // la portada en JPEG para la vista previa del enlace en WhatsApp
+  async function portadaJPEG(P) {
+    try {
+      let png = S.fichas && fichasListas(P) ? S.fichas.files[0] : null;
+      if (!png) {
+        const cont = document.getElementById('export'); cont.innerHTML = slideHTML(P, 'gancho', 1, 1);
+        const cv = await window.html2canvas(cont.firstChild, { scale: 1, width: 1080, height: 1350, backgroundColor: null, logging: false }); cont.innerHTML = '';
+        return await new Promise(r => cv.toBlob(r, 'image/jpeg', 0.85));
+      }
+      const img = await createImageBitmap(png), c = document.createElement('canvas'); c.width = img.width; c.height = img.height;
+      c.getContext('2d').drawImage(img, 0, 0);
+      return await new Promise(r => c.toBlob(r, 'image/jpeg', 0.85));
+    } catch (e) { return null; }
   }
   async function generarFichas(P) {
     if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -547,6 +569,7 @@ ${text ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(text)}" 
       if (P.estado && (M.ESTADOS.indexOf(P.estado.etiqueta) < 0 || typeof P.estado.explicacion !== 'string')) P.estado = null;
       if (P.estado && !urlBien(P.estado.url)) P.estado.url = '';
       if (typeof P.resumen !== 'string') P.resumen = '';
+      P.preguntas = (Array.isArray(P.preguntas) ? P.preguntas : []).filter(q => typeof q === 'string' && q.length <= 110).slice(0, 6);
       return P;
     } catch (e) { return null; }
   }
@@ -564,7 +587,7 @@ ${text ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(text)}" 
   function abrirVista(P, id) {
     const k = 'aa_vista_' + (id || firma(P.original));
     if (!lee(k)) { guarda(k, '1'); M.evento('enlace_abierto'); }
-    set({ paso: 'vista', vista: P, det: {} });
+    set({ paso: 'vista', vista: P, vistaId: id || '', vistaN: [], det: {}, verOriginal: false });
   }
   function vCargaVista() {
     const home = esc(location.origin + location.pathname);
@@ -572,20 +595,42 @@ ${text ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(text)}" 
   }
   function vVista() {
     const P = S.vista, home = esc(location.origin + location.pathname), todas = candidatas(P);
+    const hechas = (S.vistaN || []).map(x => x.q.toLowerCase());
+    const hilos = (P.preguntas || []).filter(q => !esta(hechas, ('¿' + q.replace(/^¿|\?$/g, '') + '?').toLowerCase())).slice(0, 4);
+    const tuyas = Object.keys(P.N || {});
+    const bloqueV = n => `<article class="bloque"><span style="font-size:14px;font-weight:600;color:var(--grey)">${esc(n.q)}</span><span style="font-size:21px;line-height:1.15;font-weight:700;letter-spacing:-.015em">${esc(n.titulo)}</span>${n.r && n.r !== n.titulo ? `<span style="font-size:16px;line-height:1.45">${esc(n.r)}</span>` : ''}${n.items.map(e => `<div class="fila"><span class="lab" style="font-size:11px">${esc(e.ver)}</span><span style="font-size:15px;line-height:1.35">${esc(e.t)}</span><span style="font-size:13px;color:var(--grey)">${fuente(e.f, e.url)}</span></div>`).join('')}</article>`;
     return `<header class="top"><a href="${home}" aria-label="and also: ir al principio" style="text-decoration:none">${logo(24)}</a><a class="btn" href="${home}" data-ref style="display:inline-flex;align-items:center;text-decoration:none;min-height:36px;font-size:13px">Haz la tuya</a></header>
-<main style="display:flex;flex-direction:column;gap:14px">
-<div class="pad" style="padding-bottom:0;display:flex;flex-direction:column;gap:10px"><span class="lab">te lo han contado entero</span><h1 style="margin:0;font-size:30px;line-height:1.04;letter-spacing:-.025em">${resaltar(titular(P))}</h1>${P.resumen ? `<p style="margin:0;font-size:16px;line-height:1.5">${esc(P.resumen)}</p>` : ''}${estadoHTML(P)}</div>
-<div class="slides">${slidesHTML(P, todas).map(s => `<div class="slidebox">${s}</div>`).join('')}</div>
-<div class="pad" style="padding-top:0;display:flex;flex-direction:column;gap:12px">
-${todas.map(k => `<div style="border-top:2px solid var(--ink);padding-top:10px;display:flex;flex-direction:column;gap:6px"><button class="link" data-det="${k}" style="align-self:flex-start;font-size:15px;text-align:left">${k === 'gancho' ? (P.esPregunta ? 'Lo que se suele dar por hecho' : 'Lo que llegó, frase a frase') : k === 'also' ? 'Lo que también es verdad' : /^f/.test(k) ? '«' + esc(trs(P)[+k.slice(1)].t) + '»' : esc(P.N[k].q)} ${S.det[k] ? '▴' : '▾'}</button>${S.det[k] ? detalleHTML(P, k).replace(/<button class="link" data-quitaq[^>]*>[^<]*<\/button>/, '') : ''}</div>`).join('')}
-<p class="small" style="margin:0;line-height:1.45">Hecha con and also el ${esc(P.fecha || '')}. Cada punto lleva su veredicto: ${VERS.join(', ')}. Lo que es opinión lleva nombre.</p>
-</div>
-<section style="background:var(--ink);color:var(--paper);padding:26px 20px 30px;display:flex;flex-direction:column;gap:14px">
-<h2 style="margin:0;font-size:28px;line-height:1.02;letter-spacing:-.03em">¿Te ha llegado algo a ti? Cuéntale el ${hl('resto')}.</h2>
-<a class="btn" href="${home}" data-ref style="display:flex;align-items:center;justify-content:center;text-decoration:none;min-height:52px;background:var(--paper);color:var(--ink);border-color:var(--paper)">Abrir and also</a>
-<p style="margin:0;font-size:13px;line-height:1.45;color:#BDBBB5">and also funciona con invitación. Si no tienes, pídesela a quien te ha mandado esto.</p>
+<main style="border-top:2px solid var(--ink)">
+${lecturaHTML(P, '')}
+${tuyas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:14px"><h2 class="h2">Lo que se ha descubierto tirando del hilo</h2>${tuyas.map(k => bloqueV(P.N[k])).join('')}</section>` : ''}
+<section class="pad" style="padding-top:8px;display:flex;flex-direction:column;gap:10px">
+<h2 style="margin:0;font-size:24px;line-height:1.05;letter-spacing:-.02em">Pregunta tú también</h2>
+${(S.vistaN || []).map(bloqueV).join('')}
+${S.vistaCargando ? '<span class="think" style="font-size:16px">Buscando fuentes…</span>' : ''}
+${S.vistaError ? `<div class="err" role="alert">${esc(S.vistaError)}</div>` : ''}
+${hilos.map(q => `<button class="sug" data-vsug="${esc(q)}" ${S.vistaCargando ? 'disabled' : ''}><span>${esc(q)}</span><span aria-hidden="true">→</span></button>`).join('')}
+<form id="fvq" class="composer" style="gap:8px;padding:10px"><label for="vq" class="sr">Tu pregunta</label><div style="display:flex;gap:8px"><input id="vq" type="text" autocomplete="off" enterkeyhint="send" placeholder="Lo que quieras saber de esto" style="border:0;padding:0 4px;background:transparent"><button class="btn dark" type="submit" style="min-height:44px" ${S.vistaCargando ? 'disabled' : ''}>Preguntar</button></div></form>
+<span class="small">Con fuentes, como todo lo demás.</span>
+</section>
+<section class="pad" style="padding-top:6px;display:flex;flex-direction:column;gap:10px"><h2 class="h2">Las fichas</h2></section>
+<div class="slides">${slidesHTML(P, todas).map(x => `<div class="slidebox">${x}</div>`).join('')}</div>
+<section style="background:var(--ink);color:var(--paper);padding:28px 20px 32px;display:flex;flex-direction:column;gap:14px;margin-top:20px">
+<h2 style="margin:0;font-size:30px;line-height:1;letter-spacing:-.03em">Lo que te llega es una parte. Cuenta el ${hl('resto')}.</h2>
+<p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Pega cualquier cosa que te llegue y te devolvemos lo que hay detrás, con fuentes, para que lo cuentes entero.</p>
+<a class="btn" href="${home}" data-ref style="display:flex;align-items:center;justify-content:center;text-decoration:none;min-height:52px;background:var(--paper);color:var(--ink);border-color:var(--paper)">Probar and also</a>
+<p style="margin:0;font-size:13px;line-height:1.45;color:#BDBBB5">Hecha el ${esc(P.fecha || '')}. Funciona con invitación: pídesela a quien te ha mandado esto.</p>
 </section>
 </main>`;
+  }
+  async function preguntarVista(q) {
+    q = (q || '').trim(); if (!q || S.vistaCargando || !S.vistaId) return;
+    set({ vistaCargando: true, vistaError: '' });
+    try {
+      const r = await M.preguntarSobrePieza(S.vistaId, q);
+      if (r.ninguna) S.vistaError = r.r;
+      else { S.vistaN = (S.vistaN || []).concat([r.nodo]); if (r.siguientes) S.vista.preguntas = (S.vista.preguntas || []).concat(r.siguientes.filter(x => !esta(S.vista.preguntas, x))); }
+    } catch (e) { S.vistaError = (e && e.mensaje) || 'No ha funcionado.'; }
+    const y = window.scrollY; set({ vistaCargando: false }); window.scrollTo(0, y);
   }
 
   // ---------- ajustes y administración ----------
@@ -644,6 +689,7 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     q('[data-empieza]', b => b.onclick = () => { const t = document.getElementById('tin'); t.value = b.dataset.empieza; S.entrada.texto = t.value; t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
     q('[data-pegar]', b => b.onclick = async () => { try { const t = await navigator.clipboard.readText(); if (t) { S.entrada.texto = t; render(); } } catch (e) { b.textContent = 'Mantén pulsado el cuadro y pega'; } });
     q('[data-sug]', b => b.onclick = () => preguntar(b.dataset.sug));
+    q('[data-vsug]', b => b.onclick = () => preguntarVista(b.dataset.vsug));
     q('[data-veroriginal]', b => b.onclick = () => set({ verOriginal: !S.verOriginal }));
     q('[data-verajustes]', b => b.onclick = () => set({ verAjustes: !S.verAjustes }));
     const keep = fn => { const y = window.scrollY; fn(); render(); window.scrollTo(0, y); };
@@ -683,9 +729,10 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     q('[data-probar]', b => b.onclick = async () => { const est = document.getElementById('estado'); est.textContent = 'Probando…'; try { await M.probarClave(); est.textContent = 'Funciona.'; } catch (e) { est.textContent = (e && e.mensaje) || 'No funciona.'; } });
     const bg = app.querySelector('[data-close-bg]'); if (bg && !(S.hoja && S.hoja.cargando)) bg.onclick = e => { if (e.target === bg) set({ hoja: null }); };
     const tin = document.getElementById('tin'); if (tin) tin.oninput = () => { S.entrada.texto = tin.value; };
-    const chat = document.getElementById('chat'); if (chat) chat.oninput = () => { S.P.paraChat = chat.value.slice(0, 400); guardaP(); };
+    const chat = document.getElementById('chat'); if (chat) chat.oninput = () => { S.P.paraChat = chat.value.slice(0, 400); const w = document.getElementById('wa-t'); if (w) w.textContent = S.P.paraChat; guardaP(); };
     const fimg = document.getElementById('fimg'); if (fimg) fimg.onchange = () => leerImagen(fimg.files && fimg.files[0]);
     const fin = document.getElementById('fin'); if (fin) fin.onsubmit = e => { e.preventDefault(); empezar(); };
+    const fvq = document.getElementById('fvq'); if (fvq) fvq.onsubmit = e => { e.preventDefault(); preguntarVista(document.getElementById('vq').value); };
     const fq = document.getElementById('fq'); if (fq) fq.onsubmit = e => { e.preventDefault(); preguntar(document.getElementById('q').value); };
     const finv = document.getElementById('finv'); if (finv) finv.onsubmit = async e => {
       e.preventDefault(); const nombre = document.getElementById('ninv').value.trim(); if (!nombre) return;
