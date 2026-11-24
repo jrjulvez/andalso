@@ -132,7 +132,7 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
     const t = (S.entrada.texto || '').trim();
     if (!t && !S.entrada.imagen) { set({ error: 'Pega lo que te ha llegado, sube una captura o escribe tu pregunta.' }); return; }
     const modo = M.modo();
-    if (modo === 'falta_codigo') { set({ error: 'Abre and also desde el enlace de invitación que te han pasado: lleva tu acceso dentro.' }); return; }
+    if (modo === 'falta_codigo') { render(); return; }
     if (modo === 'sin_clave') { set({ paso: 'ajustes', error: 'Para empezar hace falta una invitación o una clave propia.' }); return; }
     ctrl = new AbortController();
     const entrada = { texto: t, imagen: S.entrada.imagen };
@@ -254,12 +254,12 @@ ${puedePegar ? '<button type="button" class="link" data-pegar>Pegar</button>' : 
 <label class="link" style="cursor:pointer">${S.entrada.imagen ? 'Captura lista ✓' : 'Subir una captura'}<input id="fimg" type="file" accept="image/*" class="sr"></label>
 ${S.entrada.imagen ? '<button type="button" class="link" data-quitaimg>Quitar</button>' : ''}
 </div>
-<button class="btn dark" type="submit" style="min-height:54px;font-size:17px">Cuéntame el resto</button>
+${modo === 'falta_codigo' ? `<div class="aviso" style="display:flex;flex-direction:column;gap:6px"><b>Te falta la invitación</b><span style="font-size:14px;line-height:1.4">and also está en pruebas y funciona con invitación. Pide a quien te lo pasó un enlace de invitación (empieza por jrjulvez.github.io/andalso/?c=…) y ábrelo una vez en este móvil.</span></div><button class="btn" type="button" disabled style="min-height:54px;font-size:17px;opacity:.5">Cuéntame el resto</button>` : '<button class="btn dark" type="submit" style="min-height:54px;font-size:17px">Cuéntame el resto</button>'}
 </form>
 <div style="display:flex;flex-direction:column;gap:8px"><span class="small">o empieza así</span>
 <div style="display:flex;flex-wrap:wrap;gap:8px">${['¿Por qué ', '¿Qué hay detrás de ', '¿Cómo me afecta ', 'Explícame '].map(t => `<button class="chip" data-empieza="${esc(t)}">${esc(t.trim())}…</button>`).join('')}</div></div>
 <button class="link" data-go="guia" style="align-self:flex-start">Úsalo desde WhatsApp →</button>
-${modo === 'falta_codigo' ? '<p class="small" style="margin:0">Ábrelo desde el enlace de invitación que te han pasado: lleva tu acceso dentro.</p>' : ''}
+
 </section>
 ${todas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:10px">
 <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lab">tus piezas</span><span class="small" style="font-size:12px">${todas.length}</span></div>
