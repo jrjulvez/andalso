@@ -40,8 +40,17 @@
   const store = {
     lista() { try { return JSON.parse(localStorage.getItem('aa_piezas') || '[]').map(migrar).filter(Boolean); } catch (e) { return []; } },
     guardar(p) { try { const l = store.lista().filter(x => x.id !== p.id); l.unshift(p); localStorage.setItem('aa_piezas', JSON.stringify(l.slice(0, 30))); } catch (e) {} },
-    borrar(id) { try { localStorage.setItem('aa_piezas', JSON.stringify(store.lista().filter(x => x.id !== id))); } catch (e) {} }
+    borrar(id) { capturas.borrar(id); try { localStorage.setItem('aa_piezas', JSON.stringify(store.lista().filter(x => x.id !== id))); } catch (e) {} }
   };
+
+  // capturas: se quedan solo en este móvil (IndexedDB), nunca se suben
+  const capturas = (() => {
+    let db = null;
+    const abrir = () => db || (db = new Promise((ok, ko) => { const r = indexedDB.open('andalso', 1); r.onupgradeneeded = () => r.result.createObjectStore('capturas'); r.onsuccess = () => ok(r.result); r.onerror = () => ko(r.error); }));
+    const tx = (modo, f) => abrir().then(d => new Promise((ok, ko) => { const t = d.transaction('capturas', modo), r = f(t.objectStore('capturas')); t.oncomplete = () => ok(r && r.result); t.onerror = () => ko(t.error); }));
+    return { guardar: (id, c) => tx('readwrite', st => st.put(c, id)).catch(() => {}), leer: id => tx('readonly', st => st.get(id)).catch(() => null), borrar: id => tx('readwrite', st => st.delete(id)).catch(() => {}) };
+  })();
+  const conCaptura = P => !!(P.captura && P.usarCaptura !== false && S.captura && S.captura.id === P.id && S.captura.datos);
 
   // ---------- estado ----------
   let S = { paso: 'inicio', P: null, hoja: null, error: '', entrada: { texto: '', imagen: null }, previa: null, cargando: null, det: {}, verOriginal: false, pp: 0, vista: null, yo: null, admin: null };
@@ -71,7 +80,13 @@
   const tramosOrden = P => P.original.filter(x => typeof x !== 'string' && P.tramos[x.k]).map((x, j) => ({ j, k: x.k, p: PESO[P.tramos[x.k].ver] })).sort((a, b) => a.p - b.p);
   const trs = P => P.original.filter(x => typeof x !== 'string' && P.tramos[x.k]);
   const ganchoDe = P => sinComillas(P.gancho || (() => { const t = tramosOrden(P)[0]; const seg = t && trs(P).find(x => x.k === t.k); return seg ? seg.t : P.titulo; })());
-  function fichasPorDefecto(P) { return ['gancho'].concat(P.also ? ['also'] : [], Object.keys(P.N || {}), tramosOrden(P).slice(0, 2).map(x => 'f' + x.j)).slice(0, 5); }
+  // una ficha tiene que ganarse el sitio: fuera lo que solo confirma lo obvio o es opinión
+  const fuerte = (P, k) => { const t = P.tramos[k]; return t.ficha === undefined ? t.ver !== 'es así' && t.ver !== 'dicho' : !!t.ficha; };
+  const debil = (P, k) => /^f\d+$/.test(k) && !fuerte(P, (trs(P)[+k.slice(1)] || {}).k);
+  function fichasPorDefecto(P) {
+    const f = tramosOrden(P).filter(x => fuerte(P, x.k)), tr = (f.length ? f : tramosOrden(P).slice(0, 1)).slice(0, 3);
+    return ['gancho'].concat(P.also ? ['also'] : [], Object.keys(P.N || {}), tr.map(x => 'f' + x.j)).slice(0, 5);
+  }
   // todas las fichas posibles, en orden de lectura
   const candidatas = P => ['gancho'].concat(P.also ? ['also'] : [], Object.keys(P.N || {}).filter(k => P.N[k]), tramosOrden(P).map(x => 'f' + x.j));
   const valida = (P, k) => k === 'gancho' || (k === 'also' && !!P.also) || (/^f\d+$/.test(k) && !!trs(P)[+k.slice(1)]) || (/^l\d+$/.test(k) && !!(P.N || {})[k]);
@@ -79,8 +94,10 @@
     P = P || S.P;
     if (P.destino === 'chat') return ['gancho'];
     const sel = (P.fichas || []).filter(k => valida(P, k) && k !== 'gancho');
-    return ['gancho'].concat(candidatas(P).filter(k => esta(sel, k))).slice(0, MAX_FICHAS);
+    const d = ['gancho'].concat(candidatas(P).filter(k => esta(sel, k))).slice(0, MAX_FICHAS);
+    return P.destino === 'redes' ? ['llego'].concat(d) : d;
   }
+  const cuenta = P => diapos(P).filter(k => k !== 'llego').length;
   const titular = P => P.portada.neutro;
 
   // ---------- fichas (imágenes de 1080 × 1350) ----------
@@ -90,10 +107,18 @@
   }
   function slideHTML(P, k, n, tot) {
     const pie = (txt, dark) => `<div style="margin-top:auto;padding-top:22px;border-top:3px solid ${dark ? PAPER : INK};display:flex;justify-content:space-between;gap:20px;font-size:24px"><span>${txt}</span><span>${esc(P.fecha || fecha())}</span></div>`;
+    if (k === 'llego') {
+      const c = conCaptura(P) ? S.captura : null, g = ganchoDe(P);
+      let img = '';
+      if (c) { const w = c.w || 1000, h = c.h || 1600, e = Math.min(860 / w, 800 / h); img = `<div style="margin-top:34px;display:flex;justify-content:center"><img src="data:image/jpeg;base64,${c.datos}" alt="" style="display:block;width:${Math.round(w * e)}px;height:${Math.round(h * e)}px;border:5px solid ${INK};box-shadow:16px 16px 0 ${INK}"></div>`; }
+      return slideWrap(n, tot, false, `<span style="margin-top:${c ? 60 : 110}px;font-size:34px;font-weight:600">${P.esPregunta ? 'me preguntaba' : 'me ha llegado esto'}</span>
+${img || `<span style="margin-top:40px;font-size:${g.length > 90 ? 78 : 96}px;line-height:1.02;font-weight:700;letter-spacing:-.035em">«${esc(g)}»</span>`}
+<span style="margin-top:auto;padding-top:30px;font-size:44px;line-height:1.05;font-weight:700;letter-spacing:-.02em">y esto es lo que hay ${hl('detrás')} →</span>`);
+    }
     if (k === 'gancho') {
-      const g = ganchoDe(P), t = titular(P), largo = plano(t).length, nP = Object.keys(P.tramos).length + (P.also ? 1 : 0) + Object.keys(P.N || {}).length;
-      return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'te ha llegado que'}</span>
-<span style="margin-top:18px;font-size:${g.length > 80 ? 46 : 56}px;line-height:1.15;font-weight:500;color:${GRIS}">«${esc(g)}»</span>
+      const g = ganchoDe(P), t = titular(P), largo = plano(t).length, nP = Object.keys(P.tramos).length + (P.also ? 1 : 0) + Object.keys(P.N || {}).length, tras = P.destino === 'redes' && n === 2;
+      return slideWrap(n, tot, false, `${tras ? '<span style="margin-top:110px"></span>' : `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'te ha llegado que'}</span>
+<span style="margin-top:18px;font-size:${g.length > 80 ? 46 : 56}px;line-height:1.15;font-weight:500;color:${GRIS}">«${esc(g)}»</span>`}
 ${P.estado ? `<span style="margin-top:34px;align-self:flex-start;background:${INK};color:${PAPER};font-size:30px;font-weight:700;padding:10px 18px;letter-spacing:.01em">${esc(ETQ[P.estado.etiqueta] || P.estado.etiqueta)}</span>` : ''}
 <span style="margin-top:auto;font-size:30px;font-weight:500">lo que hay detrás</span>
 <span style="margin-top:16px;font-size:${largo > 80 ? 92 : largo > 50 ? 112 : 132}px;line-height:.95;font-weight:700;letter-spacing:-.04em">${resaltar(t)}</span>
@@ -106,12 +131,13 @@ ${P.estado ? `<span style="margin-top:34px;align-self:flex-start;background:${IN
 <div style="height:60px"></div>${pie(esc(P.also.fuente), true)}`);
     }
     if (/^f\d+$/.test(k)) {
-      const seg = trs(P)[+k.slice(1)], t = P.tramos[seg.k];
-      return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:30px;font-weight:500">${P.esPregunta ? 'se dice que' : 'el mensaje dice'}</span>
-<span style="margin-top:18px;font-size:${seg.t.length > 90 ? 50 : 62}px;line-height:1.2;font-weight:500">${mark(esc(seg.t), t.ver)}</span>
-<span style="margin-top:auto;font-size:${VERBO[t.ver].length > 10 ? 124 : 150}px;line-height:.92;font-weight:700;letter-spacing:-.045em">${esc(VERBO[t.ver])}</span>
-<span style="margin-top:30px;font-size:${(t.porque || '').length > 110 ? 44 : 52}px;line-height:1.15;font-weight:500;letter-spacing:-.015em">${esc(t.porque)}</span>
-<div style="height:60px"></div>${pie(esc(t.fuente))}`);
+      const seg = trs(P)[+k.slice(1)], t = P.tramos[seg.k], big = t.titular || t.porque || '', nn = x => (x || '').toLowerCase().replace(/[^a-z0-9áéíóúñü%]+/g, ' ').trim(), sub = t.titular && nn(t.porque).indexOf(nn(t.titular)) < 0 && nn(t.titular).indexOf(nn(t.porque)) < 0 ? t.porque : '';
+      return slideWrap(n, tot, false, `<span style="margin-top:100px;font-size:28px;font-weight:500">${P.esPregunta ? 'se dice que' : 'el mensaje dice'}</span>
+<span style="margin-top:14px;font-size:${seg.t.length > 110 ? 40 : 48}px;line-height:1.2;font-weight:500;color:${GRIS}">«${esc(sinComillas(seg.t))}»</span>
+<span style="margin-top:auto;align-self:flex-start;background:${INK};color:${PAPER};font-size:30px;font-weight:700;padding:10px 18px">${esc(VERBO[t.ver])}</span>
+<span style="margin-top:26px;font-size:${big.length > 85 ? 80 : big.length > 55 ? 94 : 112}px;line-height:.98;font-weight:700;letter-spacing:-.035em">${esc(big)}</span>
+${sub ? `<span style="margin-top:26px;font-size:${sub.length > 110 ? 36 : 40}px;line-height:1.2;font-weight:500">${esc(sub)}</span>` : ''}
+<div style="height:50px"></div>${pie(esc(t.fuente))}`);
     }
     const q = P.N[k];
     return slideWrap(n, tot, false, `<span style="margin-top:110px;font-size:40px;line-height:1.15;font-weight:600">${esc(q.q)}</span>
@@ -122,7 +148,7 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
   const slidesHTML = (P, keys) => keys.map((k, i) => slideHTML(P, k, i + 1, keys.length));
   function escalar() {
     app.querySelectorAll('.slidebox').forEach(b => {
-      const w = b.parentElement.classList.contains('wa-img') ? b.parentElement.clientWidth : b.parentElement.classList.contains('wa-link') ? 64 : b.classList.contains('thumb') ? 104 : b.classList.contains('fill') ? Math.min(420, b.parentElement.clientWidth) : Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
+      const w = b.classList.contains('ig') ? b.parentElement.clientWidth : b.parentElement.classList.contains('wa-img') ? b.parentElement.clientWidth : b.parentElement.classList.contains('wa-link') ? 64 : b.classList.contains('thumb') ? 104 : b.classList.contains('fill') ? Math.min(420, b.parentElement.clientWidth) : Math.min(300, Math.round((app.clientWidth || 360) * 0.74));
       b.style.width = w + 'px'; b.style.height = Math.round(w * 1.25) + 'px'; b.firstChild.style.transform = 'scale(' + (w / 1080) + ')';
     });
   }
@@ -157,6 +183,7 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
         M.evento('pieza');
       }
       if (lee('aa_ref')) { M.evento('receptor_crea'); guarda('aa_ref', ''); }
+      if (entrada.imagen) { P.captura = true; S.captura = { id: P.id, datos: entrada.imagen.datos, w: entrada.imagen.w, h: entrada.imagen.h }; capturas.guardar(P.id, S.captura); }
       store.guardar(P); S.entrada = { texto: '', imagen: null };
       abrirPieza(P);
       if (P.revision.estado === 'pendiente') revisarPieza(P);
@@ -180,7 +207,11 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
     store.guardar(P);
     if (S.P && S.P.id === P.id) { S.P = P; S.fichasListas = null; const y = window.scrollY; render(); window.scrollTo(0, y); }
   }
-  function abrirPieza(P) { set({ P: migrar(P), paso: 'pieza', modo: 'investigar', hoja: null, error: '', det: {}, verOriginal: false, alternativas: false, quiere: false, corto: null }); window.scrollTo(0, 0); }
+  function abrirPieza(P) {
+    if (P && P.captura && !(S.captura && S.captura.id === P.id)) capturas.leer(P.id).then(c => { if (c && S.P && S.P.id === P.id) { S.captura = Object.assign({ id: P.id }, c); S.fichas = null; render(); } });
+    abrirPieza2(P);
+  }
+  function abrirPieza2(P) { set({ P: migrar(P), paso: 'pieza', modo: 'investigar', hoja: null, error: '', det: {}, verOriginal: false, alternativas: false, quiere: false, corto: null }); window.scrollTo(0, 0); }
   let reloj = null;
   function tic() {
     clearInterval(reloj);
@@ -214,7 +245,7 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
       let n = 1; while (P.N['l' + n]) n++;
       const k = 'l' + n;
       P.N[k] = r.nodo;
-      if (diapos(Object.assign({}, P, { destino: 'redes' })).length < MAX_FICHAS) P.fichas = (P.fichas || []).concat([k]);
+      if (cuenta(Object.assign({}, P, { destino: 'redes' })) < MAX_FICHAS) P.fichas = (P.fichas || []).concat([k]);
       guardaP();
       set({ hoja: null });
       setTimeout(() => { const el = document.getElementById('b-' + k); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' }); }, 80);
@@ -342,7 +373,7 @@ ${S.previa && S.previa.gancho ? `<div style="display:flex;flex-direction:column;
       const dentro = k === 'gancho' || esta(sel, k);
       return `<article class="fcard${!chat && !dentro ? ' fuera' : ''}"><button class="slidebtn" data-det="${k}" aria-label="Ver detalle y fuentes"><div class="slidebox fill">${slideHTML(P, k, 1, 1)}</div></button>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;min-height:40px">
-${chat ? (k === 'gancho' ? '<span style="font-size:13px;font-weight:600">Esta es la que se envía</span>' : '<span class="small" style="font-size:13px">Para que entiendas el resto</span>') : (k === 'gancho' ? '<span style="font-size:13px;font-weight:600">Portada · siempre va</span>' : `<button class="incl${dentro ? ' on' : ''}" data-incluir="${k}" aria-pressed="${dentro}">${dentro ? '✓ En el carrusel' : '+ Añadir al carrusel'}</button>`)}
+${chat ? (k === 'gancho' ? '<span style="font-size:13px;font-weight:600">Esta es la que se envía</span>' : '<span class="small" style="font-size:13px">Para que entiendas el resto</span>') : (k === 'gancho' ? '<span style="font-size:13px;font-weight:600">Lo que hay detrás · siempre va</span>' : `<span style="display:flex;align-items:center;gap:8px"><button class="incl${dentro ? ' on' : ''}" data-incluir="${k}" aria-pressed="${dentro}">${dentro ? '✓ En el post' : '+ Añadir'}</button>${debil(P, k) ? '<span class="small" style="font-size:12px">aporta poco</span>' : ''}</span>`)}
 <button class="link" data-det="${k}" style="font-size:13px">${S.det[k] ? 'Ocultar fuentes' : 'Fuentes y detalle'}</button></div>
 ${S.det[k] ? detalleHTML(P, k) : ''}</article>`;
     }).join('');
@@ -350,28 +381,32 @@ ${S.det[k] ? detalleHTML(P, k) : ''}</article>`;
 ${P.avisoBusqueda ? '<div class="pad" style="padding-bottom:0"><div class="err">Alguna búsqueda falló mientras leía. Revisa las fuentes antes de mandar nada.</div></div>' : ''}
 
 <section class="pad" style="display:flex;flex-direction:column;gap:12px;padding-top:0;padding-bottom:16px">
-<div class="seg" role="radiogroup" aria-label="para dónde">${[['chat', 'Para el chat', '1 ficha + texto'], ['redes', 'Para redes', 'carrusel de ' + (chat ? Math.min(MAX_FICHAS, 1 + (P.fichas || []).filter(k => k !== 'gancho' && valida(P, k)).length) : d.length)]].map(([k, l, s]) => `<button class="btn ${P.destino === k ? 'on' : ''}" role="radio" aria-checked="${P.destino === k}" data-destino="${k}" style="min-height:52px;display:flex;flex-direction:column;justify-content:center;gap:1px"><span>${l}</span><span style="font-size:11px;font-weight:500">${s}</span></button>`).join('')}</div>
+<div class="seg" role="radiogroup" aria-label="para dónde">${[['chat', 'Para el chat', '1 ficha + texto'], ['redes', 'Post de Instagram', (chat ? 1 + Math.min(MAX_FICHAS, 1 + (P.fichas || []).filter(k => k !== 'gancho' && valida(P, k)).length) : d.length) + ' imágenes + pie']].map(([k, l, s]) => `<button class="btn ${P.destino === k ? 'on' : ''}" role="radio" aria-checked="${P.destino === k}" data-destino="${k}" style="min-height:52px;display:flex;flex-direction:column;justify-content:center;gap:1px"><span>${l}</span><span style="font-size:11px;font-weight:500">${s}</span></button>`).join('')}</div>
 
 </section>
 <section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:0">
-<h2 class="h2">Así le llegará</h2>
-<div class="wa"><div class="wa-b">
+<h2 class="h2">${chat ? 'Así le llegará' : 'Así se verá el post'}</h2>
+${!chat ? `<div class="igp"><div class="igp-h"><span class="igp-av" aria-hidden="true"></span><b>tu cuenta</b><span style="margin-left:auto;font-size:12px;color:var(--grey)">desliza →</span></div><div class="igp-s">${d.map((k, i) => `<div class="igp-i"><div class="slidebox ig">${slideHTML(P, k, i + 1, d.length)}</div></div>`).join('')}</div><p id="ig-t" class="igp-t">${esc(textoPie(P))}</p></div>
+${P.captura ? `<button class="opt ${conCaptura(P) ? 'on' : ''}" role="switch" aria-checked="${conCaptura(P)}" data-usarcaptura><span class="sw" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">Empezar con tu captura</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${conCaptura(P) ? 'Antes de publicar, mira que no se vean nombres, teléfonos ni fotos de perfil de nadie.' : 'Desactivado: la primera imagen cita lo que te llegó, sin la captura.'}</span></span><span></span></button>` : ''}
+<span class="small" style="line-height:1.4">Primero lo que te llegó, luego lo que hay detrás. Solo van las fichas que aportan algo: puedes cambiarlas abajo.</span>` : `<div class="wa"><div class="wa-b">
 <div class="wa-imgs">${d.slice(0, 3).map((k, i) => `<div class="wa-img"><div class="slidebox thumb">${slideHTML(P, k, i + 1, d.length)}</div>${i === 2 && d.length > 3 ? `<span class="wa-mas">+${d.length - 3}</span>` : ''}</div>`).join('')}</div>
 ${P.destino === 'chat' ? `<p id="wa-t" class="wa-t">${esc(P.paraChat || plano(titular(P)))}</p>` : ''}
 ${P.conEnlace ? `<div class="wa-link"><div class="slidebox thumb">${slideHTML(P, 'gancho', 1, 1)}</div><div style="display:flex;flex-direction:column;gap:2px;min-width:0"><b style="font-size:14px;line-height:1.25">${esc(plano(titular(P)))}</b><span style="font-size:12px;line-height:1.3;color:var(--grey);display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(P.resumen || 'El resto, con fuentes')}</span><span style="font-size:12px;color:var(--grey)">and also · enlace</span></div></div>` : ''}
 </div></div>
-<span class="small" style="line-height:1.4">${P.conEnlace ? 'Al tocar el enlace se abre la explicación completa en and also, con fuentes, y puede preguntar lo que quiera.' : 'Sin enlace solo llegan las imágenes: quien lo reciba no podrá ver las fuentes.'}</span>
+<span class="small" style="line-height:1.4">${P.conEnlace ? 'Al tocar el enlace se abre la explicación completa en and also, con fuentes, y puede preguntar lo que quiera.' : 'Sin enlace solo llegan las imágenes: quien lo reciba no podrá ver las fuentes.'}</span>`}
 </section>
 <section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:6px">
-<label for="chat" style="font-size:14px;font-weight:600;color:var(--grey)">${chat ? 'Texto para el chat' : 'Texto para acompañar'}</label>
-<textarea id="chat" rows="3" style="min-height:84px;font-size:16px">${esc(P.paraChat || plano(titular(P)))}</textarea>
-<button class="opt ${P.conEnlace ? 'on' : ''}" role="switch" aria-checked="${!!P.conEnlace}" data-conenlace><span class="sw" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">Añadir un enlace con las fuentes</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${P.conEnlace ? 'Quien lo abra verá todas las fichas y las fuentes.' : 'Desactivado: solo se comparten la ficha y el texto.'}</span></span><span></span></button>
+${chat ? `<label for="chat" style="font-size:14px;font-weight:600;color:var(--grey)">Texto para el chat</label>
+<textarea id="chat" rows="3" style="min-height:84px;font-size:16px">${esc(P.paraChat || plano(titular(P)))}</textarea>` : `<div style="display:flex;justify-content:space-between;align-items:baseline;gap:8px"><label for="pie" style="font-size:14px;font-weight:600;color:var(--grey)">Pie de foto</label>${P.pie ? '<button class="link" data-repie style="font-size:13px;padding:0">Rehacer</button>' : ''}</div>
+<textarea id="pie" rows="7" style="min-height:150px;font-size:15px;line-height:1.4">${esc(P.pie || pieDe(P))}</textarea>
+<span class="small" style="line-height:1.4">Se copia solo al compartir: en Instagram, mantén pulsado el pie y pega.${P.conEnlace ? ' El enlace va al final del pie.' : ''}</span>`}
+<button class="opt ${P.conEnlace ? 'on' : ''}" role="switch" aria-checked="${!!P.conEnlace}" data-conenlace><span class="sw" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">Añadir un enlace con las fuentes</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${P.conEnlace ? 'Quien lo abra verá la explicación entera y las fuentes.' : chat ? 'Desactivado: solo se comparten la ficha y el texto.' : 'Desactivado: el pie lleva los nombres de las fuentes, sin enlace.'}</span></span><span></span></button>
 ${P.conEnlace ? `<div style="display:flex;gap:8px;align-items:center;min-height:40px">${S.corto && S.corto.error ? `<span class="small" style="color:var(--ink)">${esc(S.corto.error)}</span>` : enlaceListo(P) && P.corto ? `<span style="flex:1 1 auto;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(P.corto.url.replace(/^https:\/\//, ''))}</span><button class="btn" data-copiar style="min-height:40px;font-size:14px">Copiar</button>` : '<span class="small think">Creando el enlace…</span>'}</div>` : ''}
 ${S.yo && S.yo.rol === 'maestro' && P.corto && P.corto.id ? '<button class="link" data-fijarejemplo style="align-self:flex-start;font-size:13px">Usar como ejemplo en la portada</button>' : ''}
 ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
 ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fichas.files)) ? alternativasHTML(P) : ''}
 </section>
-<section class="pad" style="display:flex;flex-direction:column;gap:6px;padding-bottom:6px"><h2 class="h2">${chat ? 'La ficha que se envía y el resto, por si quieres cambiar algo' : 'Qué fichas van en el carrusel'}</h2></section>
+<section class="pad" style="display:flex;flex-direction:column;gap:6px;padding-bottom:6px"><h2 class="h2">${chat ? 'La ficha que se envía y el resto, por si quieres cambiar algo' : 'Qué fichas van en el post'}</h2></section>
 <section class="pad" style="display:flex;flex-direction:column;gap:22px;padding-top:0">${cartas}</section>
 <section class="pad" style="display:flex;flex-direction:column;gap:10px;padding-top:6px">
 <span style="font-size:14px;font-weight:600;color:var(--grey)">Sigue preguntando</span>
@@ -381,8 +416,8 @@ ${sugeridas.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</
 </section>
 
 </div>`;
-    const n = d.length, que = (chat ? 'la ficha y el texto' : 'las ' + n + ' fichas') + (P.conEnlace && !(S.corto && S.corto.error) ? (chat ? ' con enlace' : ' y el enlace') : '');
-    const bar = `<div class="bar" style="flex-direction:row">${rev.estado === 'en_curso' ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Revisando antes de compartir…</span></button>` : fichasListas(P) && enlaceListo(P) ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px">${S.quiere ? 'Listo: compartir ' : 'Compartir '}${que}</button>` : `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Preparando ${chat ? 'la ficha' : 'las fichas'}…</span></button>`}</div>`;
+    const n = d.length, que = chat ? 'la ficha y el texto' + (P.conEnlace && !(S.corto && S.corto.error) ? ' con enlace' : '') : 'las ' + n + ' imágenes';
+    const bar = `<div class="bar" style="flex-direction:row">${rev.estado === 'en_curso' ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Revisando antes de compartir…</span></button>` : fichasListas(P) && enlaceListo(P) ? `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px">${chat ? (S.quiere ? 'Listo: compartir ' : 'Compartir ') + que : (S.quiere ? 'Listo: ' : '') + 'Copiar pie y compartir ' + que}</button>` : `<button class="btn dark" data-compartir style="flex:1 1 auto;min-height:52px;font-size:16px;opacity:.75"><span class="think">Preparando ${chat ? 'la ficha' : 'las fichas'}…</span></button>`}</div>`;
     return `<header class="top"><div style="display:flex;align-items:baseline;gap:12px;min-width:0">${logoBtn(22)}<span style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(P.titulo)}</span></div><button class="btn" data-modo="investigar" style="min-height:36px;font-size:13px;flex:none">← Volver</button></header>
 <main style="border-top:2px solid var(--ink)"><div class="pad" style="padding-bottom:0"><h1 style="margin:0;font-size:26px;line-height:1.05;letter-spacing:-.02em">Componer una ficha</h1><p class="small" style="margin:6px 0 0">Mira cómo le llegará y elige qué va. Todo sale de lo que has investigado.</p></div>${body}</main>${bar}${hojaHTML()}`;
   }
@@ -466,7 +501,23 @@ ${hilos.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span
     const N = {}; Object.keys(P.N || {}).forEach(k => { N[k] = P.N[k]; });
     return { v: 2, preguntas: (P.preguntas || []).slice(0, 6), resumen: P.resumen || '', estado: P.estado || null, titulo: P.titulo, fuenteOriginal: P.fuenteOriginal, esPregunta: !!P.esPregunta, gancho: P.gancho || '', original: P.original, tramos: P.tramos, portada: P.portada, also: P.also, N, fichas: P.fichas, destino: P.destino, tono: P.tono, fecha: P.fecha };
   }
-  const firmaFichas = P => firma({ d: diapos(P), m: piezaMin(P) });
+  const firmaFichas = P => firma({ d: diapos(P), m: piezaMin(P), c: P.destino === 'redes' && conCaptura(P) });
+  // pie de foto para Instagram: la idea, los puntos que van en el post y las fuentes
+  function pieDe(P) {
+    const puntos = [], fuentes = [];
+    const fu = f => { f = (f || '').trim(); if (f && f !== 'sin fuente' && !esta(fuentes, f)) fuentes.push(f); };
+    diapos(P).forEach(k => {
+      if (k === 'also' && P.also) { puntos.push(P.also.big); fu(P.also.fuente); }
+      else if (/^f\d+$/.test(k)) { const t = P.tramos[trs(P)[+k.slice(1)].k]; puntos.push(t.titular || t.porque); fu(t.fuente); }
+      else if (/^l\d+$/.test(k)) { puntos.push(P.N[k].titulo); fu(P.N[k].fuente); }
+    });
+    if (P.estado) fu(P.estado.fuente);
+    return [(P.esPregunta ? 'Me preguntaba: «' : 'Me ha llegado esto: «') + ganchoDe(P) + '»', '', plano(titular(P)), puntos.length ? '' : null].concat(puntos.filter(Boolean).map(x => '→ ' + x), fuentes.length ? ['', 'Fuentes: ' + fuentes.slice(0, 5).join(' · ')] : []).filter(x => x !== null).join('\n');
+  }
+  function textoPie(P) {
+    const url = P.conEnlace && P.corto && P.corto.firma === firma(piezaMin(P)) ? P.corto.url : '';
+    return (P.pie || pieDe(P)) + (url ? '\n\nTodo, con las fuentes: ' + url : '') + '\n\nHecho con and also';
+  }
   const enlaceListo = P => !P.conEnlace || (S.corto && S.corto.error) || (P.corto && P.corto.firma === firma(piezaMin(P)));
   const fichasListas = P => !!(S.fichas && S.fichas.firma === firmaFichas(P));
   async function enlaceCorto() {
@@ -534,7 +585,8 @@ ${hilos.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span
     const P = S.P;
     if (P.revision.estado === 'en_curso' || !fichasListas(P) || !enlaceListo(P)) { S.quiere = true; render(); programarPreparar(); return; }
     S.quiere = false;
-    const files = S.fichas.files, text = textoCompartir(P);
+    const files = S.fichas.files, ig = P.destino === 'redes', text = ig ? '' : textoCompartir(P);
+    if (ig) { try { navigator.clipboard.writeText(textoPie(P)).catch(() => {}); } catch (e) {} }
     let datos = text ? { files, text } : { files };
     if (text && !(navigator.canShare && navigator.canShare(datos))) datos = { files };
     if (puedeCompartirFicheros(files)) {
@@ -559,6 +611,7 @@ ${hilos.map(q => `<button class="sug" data-sug="${esc(q)}"><span>${esc(q)}</span
 <div style="display:flex;gap:8px;overflow-x:auto">${S.fichas.urls.map((u, i) => `<img src="${u}" alt="ficha ${i + 1}" style="width:${n === 1 ? 150 : 110}px;height:auto;border:2px solid var(--ink);flex:none">`).join('')}</div>
 ${window.ClipboardItem && navigator.clipboard && navigator.clipboard.write ? `<button class="btn" data-copiaimg>${n === 1 ? 'Copiar la imagen' : 'Copiar la primera imagen'}</button>` : ''}
 ${text ? `<a class="btn" href="https://wa.me/?text=${encodeURIComponent(text)}" target="_blank" rel="noopener" style="display:flex;align-items:center;justify-content:center;text-decoration:none">Mandar el texto por WhatsApp</a>` : ''}
+${P.destino === 'redes' ? '<button class="btn" data-copiapie>Copiar el pie de foto</button>' : ''}
 <button class="btn" data-descargar>${n === 1 ? 'Guardar la imagen' : 'Guardar las ' + n + ' imágenes'}</button>
 </div>`;
   }
@@ -711,14 +764,14 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     q('[data-incluir]', b => b.onclick = () => keep(() => {
       const P = S.P, k = b.dataset.incluir;
       if (esta(P.fichas, k)) P.fichas = P.fichas.filter(x => x !== k);
-      else if (diapos(P).length < MAX_FICHAS) P.fichas = (P.fichas || []).concat([k]);
+      else if (cuenta(P) < MAX_FICHAS) P.fichas = (P.fichas || []).concat([k]);
       else { S.error = 'Caben ' + MAX_FICHAS + ' fichas como mucho. Quita otra antes.'; return; }
       S.error = ''; guardaP();
     }));
     q('[data-quitaq]', b => b.onclick = () => keep(() => { const P = S.P, k = b.dataset.quitaq; delete P.N[k]; P.fichas = P.fichas.filter(x => x !== k); S.det[k] = false; guardaP(); }));
     q('[data-accept]', b => b.onclick = () => {
       const h = S.hoja, P = S.P; P.N[h.k] = h.nodo;
-      if (diapos(Object.assign({}, P, { destino: 'redes' })).length < MAX_FICHAS) P.fichas = (P.fichas || []).concat([h.k]);
+      if (cuenta(Object.assign({}, P, { destino: 'redes' })) < MAX_FICHAS) P.fichas = (P.fichas || []).concat([h.k]);
       guardaP(); S.det[h.k] = false; set({ hoja: null });
       setTimeout(() => { const el = app.querySelector('[data-det="' + h.k + '"]'); if (el) el.scrollIntoView({ behavior: 'smooth', block: 'center' }); }, 60);
     });
@@ -728,6 +781,9 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     q('[data-compartir]', b => b.onclick = () => compartir());
     q('[data-descargar]', b => b.onclick = () => descargar());
     q('[data-copiaimg]', b => b.onclick = () => copiarImagen(b));
+    q('[data-usarcaptura]', b => b.onclick = () => keep(() => { S.P.usarCaptura = !conCaptura(S.P); guardaP(); }));
+    q('[data-repie]', b => b.onclick = () => keep(() => { delete S.P.pie; guardaP(); }));
+    q('[data-copiapie]', b => b.onclick = () => { try { navigator.clipboard.writeText(textoPie(S.P)).then(() => { b.textContent = 'Copiado: pégalo en Instagram'; }).catch(() => { b.textContent = 'No he podido copiarlo'; }); } catch (e) {} });
     q('[data-conenlace]', b => b.onclick = () => keep(() => { S.P.conEnlace = !S.P.conEnlace; S.corto = null; guardaP(); }));
     q('[data-copiar]', b => b.onclick = async () => { try { await navigator.clipboard.writeText(await enlaceCorto()); b.textContent = 'Copiado'; } catch (e) { b.textContent = 'No se pudo'; } });
     q('[data-quitaimg]', b => b.onclick = () => { S.entrada.imagen = null; render(); });
@@ -743,6 +799,7 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
       tin.oninput = () => { const antes = !!S.entrada.texto.trim(); S.entrada.texto = tin.value; if (antes !== !!tin.value.trim() && !S.entrada.imagen) { render(); const t = document.getElementById('tin'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); } };
       tin.onpaste = e => { const f = e.clipboardData && Array.from(e.clipboardData.files || []).find(x => /^image\//.test(x.type)); if (f) { e.preventDefault(); leerImagen(f); } };
     }
+    const pie = document.getElementById('pie'); if (pie) pie.oninput = () => { S.P.pie = pie.value.slice(0, 2000); const t = document.getElementById('ig-t'); if (t) t.textContent = textoPie(S.P); guardaP(); };
     const chat = document.getElementById('chat'); if (chat) chat.oninput = () => { S.P.paraChat = chat.value.slice(0, 400); const w = document.getElementById('wa-t'); if (w) w.textContent = S.P.paraChat; guardaP(); };
     const fimg = document.getElementById('fimg'); if (fimg) fimg.onchange = () => leerImagen(fimg.files && fimg.files[0]);
     const fin = document.getElementById('fin'); if (fin) fin.onsubmit = e => { e.preventDefault(); empezar(); };
@@ -783,7 +840,7 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
       const k = Math.min(1, 1280 / Math.max(img.width, img.height));
       const c = document.createElement('canvas'); c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
       c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-      S.entrada.imagen = { tipo: 'image/jpeg', datos: c.toDataURL('image/jpeg', 0.75).split(',')[1] }; URL.revokeObjectURL(url); S.error = ''; render();
+      S.entrada.imagen = { tipo: 'image/jpeg', datos: c.toDataURL('image/jpeg', 0.75).split(',')[1], w: c.width, h: c.height }; URL.revokeObjectURL(url); S.error = ''; render();
     };
     img.onerror = () => set({ error: 'No he podido abrir esa imagen.' });
     img.src = url;

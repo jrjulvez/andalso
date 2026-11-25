@@ -107,6 +107,14 @@ input[type=text],input[type=password],select{width:100%;min-height:46px;padding:
 .bloque{display:flex;flex-direction:column;gap:8px;border-top:2px solid var(--ink);padding-top:12px}
 .bloque .fila{display:flex;flex-direction:column;gap:2px;border-top:1.5px solid var(--line);padding-top:8px}
 .fcard{display:flex;flex-direction:column;gap:6px}
+.igp{border:2px solid var(--ink);background:var(--white)}
+.igp-h{display:flex;align-items:center;gap:8px;padding:8px 10px;font-size:13px}
+.igp-av{width:24px;height:24px;border-radius:50%;background:var(--fluo);border:2px solid var(--ink)}
+.igp-s{display:flex;overflow-x:auto;scroll-snap-type:x mandatory;scrollbar-width:none}
+.igp-s::-webkit-scrollbar{display:none}
+.igp-i{flex:none;width:100%;scroll-snap-align:start}
+.igp-i .slidebox{border:0}
+.igp-t{margin:0;padding:10px 12px 12px;font-size:14px;line-height:1.4;white-space:pre-line;display:-webkit-box;-webkit-line-clamp:6;-webkit-box-orient:vertical;overflow:hidden}
 .fcard.fuera .slidebox{opacity:.45}
 .slidebtn{border:0;padding:0;background:none;cursor:pointer;display:block;width:100%;text-align:left}
 .slidebtn:focus-visible{outline:3px solid var(--ink);outline-offset:3px}

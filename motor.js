@@ -123,7 +123,7 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
 2. «estado»: en qué punto está lo principal. «etiqueta», una de estas: ${ESTADOS.map(e => '«' + e + '»').join(', ')}. «explicacion»: una o dos frases que lo justifiquen (por ejemplo: un anuncio de hace horas que nadie ha revisado aún es «anunciado», no «confirmado»). Con su fuente y url. Si lo principal es un anuncio, un estudio o una demostración, busca la fuente original y dilo.
 3. «es_pregunta»: true si es una pregunta o duda de la persona («¿por qué…?», «me han dicho que…», «explícame…»); false si es algo que le ha llegado.
 4. «original»: ${largo ? 'el texto es LARGO: no lo copies entero. Escribe solo sus 3 a 6 afirmaciones centrales, cada una copiada palabra por palabra del texto, separadas por un espacio.' : 'si le ha llegado, el texto retecleado tal cual (sin datos de personas privadas; si es un enlace, el titular). Si es una pregunta, lo que se suele oír o dar por hecho sobre ese tema, en una a tres frases neutras y sin cifras inventadas.'}
-5. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto», un trozo copiado EXACTAMENTE del original. Prioriza lo que más importa y lo más dudoso. Para cada una busca y da veredicto, «porque» (UNA frase de 15 palabras como mucho, que se entienda sola), la fuente y su «url».
+5. «tramos»: parte el original en 2–6 afirmaciones. Cada «texto», un trozo copiado EXACTAMENTE del original. Prioriza lo que más importa y lo más dudoso. Para cada una busca y da veredicto, «porque» (UNA frase de 15 palabras como mucho, que se entienda sola), la fuente y su «url». «titular»: lo que aprende quien lo lea, en 10 palabras como mucho, que impacte leído solo y con el dato concreto si lo hay; nunca «es verdad», «es falso» ni «es así». «ficha»: true solo si esa afirmación merece una imagen propia porque corrige lo que llegó o aporta algo que el lector no sabe; false si solo confirma lo obvio, repite otra o es una opinión sin más.
 6. «also»: el hecho comprobado que más amplía lo que llegó o mejor responde a la pregunta: lo que también es verdad y no se cuenta. Mejor con un número que dé contexto. «grande»: 14 palabras como mucho. Siempre con fuente y url.
 7. «en_una_frase»: lo que hay detrás, en una frase que impacte leída sola (20 palabras como mucho). Empieza por el contexto, no por un veredicto tipo «falso». No puede contradecir los veredictos ni el estado, ni cerrar nada abierto. Marca como mucho DOS palabras con **asteriscos**.
 8. «para_el_chat»: lo que la persona escribiría en el grupo: una o dos frases, como un amigo, sin dar lecciones ni decir «falso», sin asteriscos.
@@ -132,7 +132,7 @@ Responde SOLO con un objeto JSON válido entre <json> y </json>, sin texto fuera
 11. «titulo_corto»: 2–4 palabras. «fuente_original»: qué es («post de un foro», «captura de un titular», «texto reenviado», «tu pregunta»).
 Sé breve en todo: la respuesta tiene que caber entera.
 
-<json>{"resumen":"","estado":{"etiqueta":"","explicacion":"","fuente":"","url":""},"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","fuente":"","url":""}],"also":{"grande":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":"","para_el_chat":"","gancho":"","preguntas":["","","","",""]}</json>` });
+<json>{"resumen":"","estado":{"etiqueta":"","explicacion":"","fuente":"","url":""},"es_pregunta":false,"titulo_corto":"","fuente_original":"","original":"","tramos":[{"texto":"","veredicto":"","porque":"","titular":"","ficha":true,"fuente":"","url":""}],"also":{"grande":"","veredicto":"es así","fuente":"","url":""},"en_una_frase":"","para_el_chat":"","gancho":"","preguntas":["","","","",""]}</json>` });
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: c }], busquedas: DEF.busquedas, maxTokens: 8000, señal });
     return { datos: normalizarLectura(sacarJSON(r.texto)), consumo: r.consumo, errBusqueda: r.errBusqueda };
   }
@@ -164,7 +164,7 @@ Sé breve en todo: la respuesta tiene que caber entera.
     lista.forEach(({ tx, t }) => {
       const r = localizar(original, tx, pos);
       const k = 't' + (n++);
-      tramos[k] = { ver: verOK(t.veredicto), porque: limpia(t.porque), fuente: limpia(t.fuente) || 'sin fuente', url: urlOK(t.url) };
+      tramos[k] = { ver: verOK(t.veredicto), porque: limpia(t.porque), titular: limpia(t.titular).replace(/\*\*/g, '').slice(0, 110), ficha: t.ficha !== false, fuente: limpia(t.fuente) || 'sin fuente', url: urlOK(t.url) };
       if (!r) { sueltos.push({ k, t: tx }); return; }
       if (r[0] > pos) segs.push(original.slice(pos, r[0]));
       segs.push({ k, t: original.slice(r[0], r[1]) });
@@ -192,19 +192,19 @@ Sé breve en todo: la respuesta tiene que caber entera.
 
   // ---------- 2. revisión de calidad: una segunda mirada antes de compartir ----------
   async function revisar(L, señal) {
-    const trs = L.original.filter(s => typeof s !== 'string').map(s => ({ k: s.k, texto: s.t, veredicto: L.tramos[s.k].ver, porque: L.tramos[s.k].porque, fuente: L.tramos[s.k].fuente, url: L.tramos[s.k].url }));
+    const trs = L.original.filter(s => typeof s !== 'string').map(s => ({ k: s.k, texto: s.t, veredicto: L.tramos[s.k].ver, porque: L.tramos[s.k].porque, titular: L.tramos[s.k].titular || '', fuente: L.tramos[s.k].fuente, url: L.tramos[s.k].url }));
     const entrada = { tramos: trs, also: L.also, en_una_frase: L.portada.neutro, para_el_chat: L.paraChat };
     const txt = `Revisa esta pieza antes de que se comparta. No busques nada: juzga solo con lo que hay.
 ${JSON.stringify(entrada)}
 
 Comprueba:
 1. Cada veredicto encaja con su «porque» y tiene fuente. Si el «porque» no da una prueba concreta, o la fuente está vacía o es «sin fuente», el veredicto pasa a «sin fuente».
-2. «en_una_frase» y «para_el_chat» no afirman más que los veredictos: nada «sin fuente» o «a medias» se da por cierto, nada abierto se da por cerrado.
+2. «titular», «en_una_frase» y «para_el_chat» no afirman más que los veredictos: nada «sin fuente» o «a medias» se da por cierto, nada abierto se da por cerrado.
 3. Ninguna persona privada nombrada. Ninguna cifra que no esté en un tramo o en «also» con su fuente.
 4. Neutralidad política.
 Cambia SOLO lo que falle; si todo está bien, devuelve los mismos textos. «cambios»: una línea por cosa cambiada.
 
-<json>{"cambios":[""],"tramos":[{"k":"","veredicto":"","porque":""}],"also":{"grande":"","veredicto":""},"en_una_frase":"","para_el_chat":""}</json>`;
+<json>{"cambios":[""],"tramos":[{"k":"","veredicto":"","porque":"","titular":""}],"also":{"grande":"","veredicto":""},"en_una_frase":"","para_el_chat":""}</json>`;
     const r = await llamar({ sistema: REGLAS(), mensajes: [{ role: 'user', content: txt }], maxTokens: 2500, señal });
     const j = sacarJSON(r.texto);
     const cambios = (Array.isArray(j.cambios) ? j.cambios : []).map(limpia).filter(Boolean);
@@ -212,6 +212,7 @@ Cambia SOLO lo que falle; si todo está bien, devuelve los mismos textos. «camb
       const o = L.tramos[t.k]; if (!o) return;
       if (VERS.indexOf(t.veredicto) >= 0) o.ver = t.veredicto;
       if (limpia(t.porque)) o.porque = limpia(t.porque);
+      if (limpia(t.titular)) o.titular = limpia(t.titular).replace(/\*\*/g, '').slice(0, 110);
     });
     if (L.also && j.also) { if (limpia(j.also.grande)) L.also.big = limpia(j.also.grande); if (VERS.indexOf(j.also.veredicto) >= 0) L.also.ver = j.also.veredicto; }
     if (typeof j.en_una_frase === 'string' && limpia(j.en_una_frase)) L.portada.neutro = limpia(j.en_una_frase);
