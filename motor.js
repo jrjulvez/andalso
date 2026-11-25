@@ -302,6 +302,10 @@ PREGUNTA de la persona: «${pregunta}»
     borrar: codigo => pedir('/inv/borrar', { metodo: 'POST', cuerpo: { codigo } })
   };
   const estadisticas = () => pedir('/stats');
+  const ejemplo = {
+    async leer() { if (!proxy()) return ''; try { const r = await fetch(proxy() + '/ejemplo'); const d = await r.json(); return d.id || ''; } catch (e) { return ''; } },
+    fijar: id => pedir('/ejemplo', { metodo: 'POST', cuerpo: { id } })
+  };
 
-  window.MOTOR = { preguntarSobrePieza, subirPortada, enlaceDe, ESTADOS, previa, leer, revisar, responder, probarClave, ajustes, modo, proxy, VERS, guardarPieza, leerPieza, huella, memoria, evento, yo, invitaciones, estadisticas };
+  window.MOTOR = { ejemplo, preguntarSobrePieza, subirPortada, enlaceDe, ESTADOS, previa, leer, revisar, responder, probarClave, ajustes, modo, proxy, VERS, guardarPieza, leerPieza, huella, memoria, evento, yo, invitaciones, estadisticas };
 })();

@@ -83,6 +83,11 @@ async function atender(req, env) {
 <meta http-equiv="refresh" content="0;url=${escH(destino)}"></head><body style="font-family:system-ui;background:#F4F4F1;color:#111;padding:24px"><p><a href="${escH(destino)}">Abrir en and also</a></p><script>location.replace(${JSON.stringify(destino)})</script></body></html>`;
     return new Response(html, { status: 200, headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
   }
+  // ---- público: la pieza de ejemplo que se enseña en la portada ----
+  if (req.method === 'GET' && ruta === '/ejemplo') {
+    const id = kv ? await kv.get('ejemplo') : null;
+    return new Response(JSON.stringify({ id: id || '' }), { status: 200, headers: { ...cors, 'Access-Control-Allow-Origin': '*', 'content-type': 'application/json', 'cache-control': 'public, max-age=300' } });
+  }
   if (req.method === 'GET' && ruta === '/') return json({ ok: true, servicio: 'and also', enlaces_cortos: !!kv, invitaciones: !!kv });
 
   // ---- público: eventos anónimos (solo contadores por día, sin datos de nadie) ----
@@ -184,7 +189,7 @@ async function atender(req, env) {
   }
 
   // ---- solo el código maestro: invitaciones y estadísticas ----
-  if (ruta === '/inv' || ruta === '/inv/borrar' || ruta === '/stats') {
+  if (ruta === '/inv' || ruta === '/inv/borrar' || ruta === '/stats' || ruta === '/ejemplo') {
     if (rol !== 'maestro') return err('codigo', 'Solo con el código maestro.', 403);
     if (!kv) return sinKV();
     if (req.method === 'GET' && ruta === '/inv') {
@@ -209,6 +214,13 @@ async function atender(req, env) {
       if (!/^[A-Za-z0-9_-]{6,64}$/.test(c)) return err('peticion', 'Código no válido.', 400);
       await kv.delete('inv:' + c);
       return json({ ok: true });
+    }
+    if (req.method === 'POST' && ruta === '/ejemplo') {
+      let id = ''; try { id = String((await req.json()).id || ''); } catch (e) {}
+      if (id && !/^[A-Za-z0-9]{6,16}$/.test(id)) return err('peticion', 'Id no válido.', 400);
+      if (id && !(await kv.get('p:' + id))) return err('no_existe', 'No existe esa pieza.', 404);
+      if (id) await kv.put('ejemplo', id); else await kv.delete('ejemplo');
+      return json({ ok: true, id });
     }
     if (req.method === 'GET' && ruta === '/stats') {
       const dias = [];

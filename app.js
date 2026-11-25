@@ -238,46 +238,54 @@ ${q.r && q.r !== q.titulo ? `<span style="margin-top:30px;font-size:${q.r.length
     const POR = 3, pags = Math.max(1, Math.ceil(todas.length / POR));
     S.pp = Math.min(Math.max(S.pp || 0, 0), pags - 1);
     const piezas = todas.slice(S.pp * POR, S.pp * POR + POR);
-    const modo = M.modo();
-    const resto = ['¿Por qué ha pasado?', '¿Desde cuándo?', '¿A quién afecta?', '¿Es lo normal?', '¿Qué también es verdad?', '¿Qué no se sabe aún?'];
-    const puedePegar = !!(navigator.clipboard && navigator.clipboard.readText);
+    const modo = M.modo(), sinAcceso = modo === 'falta_codigo';
+    const hay = !!((S.entrada.texto || '').trim() || S.entrada.imagen);
+    if (S.ejemplo === undefined) cargarEjemplo();
+    const E = S.ejemplo;
     return `<header class="top">${logoBtn(24)}<button class="link" data-go="ajustes" style="font-weight:500">Ajustes</button></header>
 <main style="display:flex;flex-direction:column">
-<section class="pad" style="padding-top:20px;display:flex;flex-direction:column;gap:22px">
-<h1 style="margin:0;font-size:46px;line-height:.96;letter-spacing:-.04em;font-weight:700">Lo que te llega es una parte.<br>Cuenta el ${hl('resto')}.</h1>
+<section class="pad" style="padding-top:18px;display:flex;flex-direction:column;gap:16px">
+<h1 style="margin:0;font-size:40px;line-height:.98;letter-spacing:-.035em;font-weight:700">¿Te ha llegado algo?</h1>
+<p style="margin:0;font-size:17px;line-height:1.4">Pégalo y te cuento el ${hl('resto')}: qué hay detrás, en qué punto está y qué no te cuentan. Con fuentes.</p>
 ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
-<form id="fin" class="composer">
-<label for="tin" style="font-size:15px;font-weight:600">¿Qué quieres entender?</label>
-<textarea id="tin" rows="4" placeholder="Pega una noticia, un mensaje o un enlace… o pregunta por cualquier tema">${esc(S.entrada.texto)}</textarea>
-<div style="display:flex;gap:16px;align-items:center;flex-wrap:wrap">
-${puedePegar ? '<button type="button" class="link" data-pegar>Pegar</button>' : ''}
-<label class="link" style="cursor:pointer">${S.entrada.imagen ? 'Captura lista ✓' : 'Subir una captura'}<input id="fimg" type="file" accept="image/*" class="sr"></label>
-${S.entrada.imagen ? '<button type="button" class="link" data-quitaimg>Quitar</button>' : ''}
-</div>
-${modo === 'falta_codigo' ? `<div class="aviso" style="display:flex;flex-direction:column;gap:6px"><b>Te falta la invitación</b><span style="font-size:14px;line-height:1.4">and also está en pruebas y funciona con invitación. Pide a quien te lo pasó un enlace de invitación (empieza por jrjulvez.github.io/andalso/?c=…) y ábrelo una vez en este móvil.</span></div><button class="btn" type="button" disabled style="min-height:54px;font-size:17px;opacity:.5">Cuéntame el resto</button>` : '<button class="btn dark" type="submit" style="min-height:54px;font-size:17px">Cuéntame el resto</button>'}
+${sinAcceso ? `<div class="aviso" style="display:flex;flex-direction:column;gap:6px"><b>Te falta la invitación</b><span style="font-size:14px;line-height:1.4">and also está en pruebas. Pide a quien te lo pasó un enlace de invitación (…/andalso/?c=…) y ábrelo una vez en este móvil.</span></div>` : ''}
+<form id="fin" class="composer entrada">
+${S.entrada.imagen ? `<div style="display:flex;gap:12px;align-items:center"><img src="data:image/jpeg;base64,${S.entrada.imagen.datos}" alt="Tu captura" style="width:64px;height:auto;max-height:110px;object-fit:cover;border:2px solid var(--ink)"><div style="display:flex;flex-direction:column;gap:4px"><b style="font-size:15px">Captura lista</b><button type="button" class="link" data-quitaimg style="padding:0;align-self:flex-start">Quitar</button></div></div>` : ''}
+<label for="tin" class="sr">Lo que te ha llegado o tu pregunta</label>
+<textarea id="tin" rows="${hay && !S.entrada.imagen ? 4 : 2}" placeholder="${S.entrada.imagen ? 'Añade un comentario si quieres' : 'Pega aquí un mensaje, un titular o un enlace… o escribe tu pregunta'}">${esc(S.entrada.texto)}</textarea>
+${hay ? `<button class="btn dark" type="submit" ${sinAcceso ? 'disabled style="min-height:56px;font-size:17px;opacity:.5"' : 'style="min-height:56px;font-size:17px"'}>Cuéntame el resto</button>
+<div style="display:flex;gap:16px"><button type="button" class="link" data-limpiar style="color:var(--grey)">Empezar de nuevo</button></div>`
+      : `<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+<button type="button" class="btn dark" data-pegar style="min-height:56px;display:flex;flex-direction:column;justify-content:center;gap:1px"><span style="font-size:16px">Pegar</span><span style="font-size:11px;font-weight:500;opacity:.8">texto, enlace o captura</span></button>
+<label class="btn" style="min-height:56px;display:flex;flex-direction:column;justify-content:center;align-items:center;gap:1px;cursor:pointer"><span style="font-size:16px">Subir captura</span><span style="font-size:11px;font-weight:500">de tu galería</span><input id="fimg" type="file" accept="image/*" class="sr"></label>
+</div>`}
 </form>
-<div style="display:flex;flex-direction:column;gap:8px"><span class="small">o empieza así</span>
-<div style="display:flex;flex-wrap:wrap;gap:8px">${['¿Por qué ', '¿Qué hay detrás de ', '¿Cómo me afecta ', 'Explícame '].map(t => `<button class="chip" data-empieza="${esc(t)}">${esc(t.trim())}…</button>`).join('')}</div></div>
-<button class="link" data-go="guia" style="align-self:flex-start">Úsalo desde WhatsApp →</button>
-
+<button class="link" data-go="guia" style="align-self:flex-start;font-size:14px">Úsalo directamente desde WhatsApp, Instagram o Chrome →</button>
+</section>
+<section class="pad" style="padding-top:6px;display:flex;flex-direction:column;gap:12px">
+<h2 class="h2">Así funciona</h2>
+${E ? `<a href="#v=${esc(E.id)}" class="ejemplo" style="text-decoration:none;color:inherit"><div class="slidebox thumb">${slideHTML(E.P, 'gancho', 1, 1)}</div><div style="display:flex;flex-direction:column;gap:6px;min-width:0"><span class="small">Le llegó esto a alguien:</span><span style="font-size:15px;line-height:1.3;font-weight:500">«${esc(ganchoDe(E.P))}»</span><span style="font-size:15px;line-height:1.3;font-weight:700">${resaltar(titular(E.P))}</span><span style="font-size:14px;font-weight:600;text-decoration:underline;text-underline-offset:3px">Ver el ejemplo completo →</span></div></a>` : ''}
+<ol class="pasos">
+<li><b>Pega lo que te llega.</b> Un mensaje del grupo, una captura, un titular, un enlace o tu pregunta.</li>
+<li><b>Mira lo que hay detrás.</b> En qué punto está, qué es cierto, qué no y qué no te cuentan, con fuentes. Y tira del hilo.</li>
+<li><b>Cuéntalo entero, si quieres.</b> Una ficha para el grupo o un post para redes, con enlace a todo lo comprobado.</li>
+</ol>
 </section>
 ${todas.length ? `<section class="pad" style="padding-top:4px;display:flex;flex-direction:column;gap:10px">
 <div style="display:flex;justify-content:space-between;align-items:baseline"><span class="lab">tus piezas</span><span class="small" style="font-size:12px">${todas.length}</span></div>
 <div style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px">${piezas.map(p => `<div style="display:flex;flex-direction:column;gap:6px;min-width:0"><button class="btn" data-abrir="${esc(p.id)}" aria-label="Abrir ${esc(p.titulo)}" style="border:0;padding:0;min-height:0;display:flex;flex-direction:column;gap:6px;text-align:left"><div class="slidebox thumb">${slideHTML(p, 'gancho', 1, 1)}</div><span style="font-size:13px;line-height:1.2;font-weight:600;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden">${esc(p.titulo)}</span></button><span style="display:flex;justify-content:space-between;align-items:center"><span class="small" style="font-size:11px">${esc(p.fecha || '')}</span><button class="link" data-borrar="${esc(p.id)}" aria-label="Borrar ${esc(p.titulo)}" style="font-size:11px;color:var(--grey);padding:0">Borrar</button></span></div>`).join('')}</div>
 ${pags > 1 ? `<div style="display:flex;justify-content:space-between;align-items:center"><button class="btn" data-pp="-1" ${S.pp === 0 ? 'disabled' : ''} aria-label="Más recientes" style="min-height:40px;min-width:48px">←</button><span class="small">${S.pp + 1} de ${pags}</span><button class="btn" data-pp="1" ${S.pp >= pags - 1 ? 'disabled' : ''} aria-label="Anteriores" style="min-height:40px;min-width:48px">→</button></div>` : ''}
 </section>` : ''}
-<section style="background:var(--ink);color:var(--paper);padding:30px 20px 32px;display:flex;flex-direction:column;gap:20px">
-<h2 style="margin:0;font-size:32px;line-height:1;letter-spacing:-.03em">Todo lo que te llega tiene un ${hl('resto')}.</h2>
-<div style="display:flex;flex-direction:column">${resto.map((q, i) => `<span style="font-size:${i % 2 ? 24 : 27}px;line-height:1.25;font-weight:${i % 2 ? 500 : 700};letter-spacing:-.02em;opacity:${1 - i * 0.09}">${q}</span>`).join('')}</div>
-<div style="display:flex;flex-direction:column;gap:16px;border-top:2px solid #3A3936;padding-top:20px">
-<div><h3 style="margin:0 0 3px;font-size:19px">Entiéndelo</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Una noticia, un rumor o un tema: el contexto, el porqué y lo que no te cuentan.</p></div>
-<div><h3 style="margin:0 0 3px;font-size:19px">Tira del hilo</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Cada respuesta abre preguntas nuevas, pensadas para ese caso.</p></div>
-<div><h3 style="margin:0 0 3px;font-size:19px">Cuéntalo entero</h3><p style="margin:0;font-size:15px;line-height:1.45;color:#D9D7D1">Una ficha y un texto listos para tu grupo, o un carrusel para tus redes.</p></div>
-</div>
-<p style="margin:0;font-size:13px;line-height:1.45;color:#BDBBB5">Todo con fuentes. Lo que es opinión, se dice. Lo que no se sabe, también.</p>
-</section>
-<p class="small pad" style="margin:0;line-height:1.45;padding-top:16px">Tus piezas se guardan en este dispositivo. Lo que escribes se envía a la IA para buscar fuentes; nunca nombres de personas privadas.</p>
+<p class="small pad" style="margin:0;line-height:1.45;padding-top:10px">Tus piezas se guardan en este dispositivo. Lo que pegas se envía a la IA para buscar fuentes; nunca nombres de personas privadas.</p>
 </main>`;
+  }
+  async function cargarEjemplo() {
+    S.ejemplo = null;
+    try {
+      const id = await M.ejemplo.leer(); if (!id) return;
+      const P = validarPieza(await M.leerPieza(id)); if (!P) return;
+      S.ejemplo = { id, P }; if (S.paso === 'inicio') render();
+    } catch (e) {}
   }
 
   function vGuia() {
@@ -359,6 +367,7 @@ ${P.conEnlace ? `<div class="wa-link"><div class="slidebox thumb">${slideHTML(P,
 <textarea id="chat" rows="3" style="min-height:84px;font-size:16px">${esc(P.paraChat || plano(titular(P)))}</textarea>
 <button class="opt ${P.conEnlace ? 'on' : ''}" role="switch" aria-checked="${!!P.conEnlace}" data-conenlace><span class="sw" aria-hidden="true"></span><span style="display:flex;flex-direction:column;gap:2px"><span style="font-size:15px;font-weight:700">Añadir un enlace con las fuentes</span><span style="font-size:13px;line-height:1.3;color:var(--grey)">${P.conEnlace ? 'Quien lo abra verá todas las fichas y las fuentes.' : 'Desactivado: solo se comparten la ficha y el texto.'}</span></span><span></span></button>
 ${P.conEnlace ? `<div style="display:flex;gap:8px;align-items:center;min-height:40px">${S.corto && S.corto.error ? `<span class="small" style="color:var(--ink)">${esc(S.corto.error)}</span>` : enlaceListo(P) && P.corto ? `<span style="flex:1 1 auto;min-width:0;font-size:14px;font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(P.corto.url.replace(/^https:\/\//, ''))}</span><button class="btn" data-copiar style="min-height:40px;font-size:14px">Copiar</button>` : '<span class="small think">Creando el enlace…</span>'}</div>` : ''}
+${S.yo && S.yo.rol === 'maestro' && P.corto && P.corto.id ? '<button class="link" data-fijarejemplo style="align-self:flex-start;font-size:13px">Usar como ejemplo en la portada</button>' : ''}
 ${S.error ? `<div class="err" role="alert">${esc(S.error)}</div>` : ''}
 ${S.alternativas || (S.fichas && fichasListas(P) && !puedeCompartirFicheros(S.fichas.files)) ? alternativasHTML(P) : ''}
 </section>
@@ -687,7 +696,9 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     q('[data-borrar]', b => b.onclick = () => { store.borrar(b.dataset.borrar); render(); });
     q('[data-pp]', b => b.onclick = () => { S.pp = (S.pp || 0) + (+b.dataset.pp); render(); });
     q('[data-empieza]', b => b.onclick = () => { const t = document.getElementById('tin'); t.value = b.dataset.empieza; S.entrada.texto = t.value; t.focus(); t.setSelectionRange(t.value.length, t.value.length); });
-    q('[data-pegar]', b => b.onclick = async () => { try { const t = await navigator.clipboard.readText(); if (t) { S.entrada.texto = t; render(); } } catch (e) { b.textContent = 'Mantén pulsado el cuadro y pega'; } });
+    q('[data-pegar]', b => b.onclick = () => pegar(b));
+    q('[data-limpiar]', b => b.onclick = () => { S.entrada = { texto: '', imagen: null }; S.error = ''; render(); });
+    q('[data-fijarejemplo]', b => b.onclick = async () => { b.textContent = 'Guardando…'; try { await M.ejemplo.fijar(S.P.corto.id); b.textContent = 'Es el ejemplo de la portada ✓'; S.ejemplo = undefined; } catch (e) { b.textContent = e.mensaje || 'No se pudo'; } });
     q('[data-sug]', b => b.onclick = () => preguntar(b.dataset.sug));
     q('[data-vsug]', b => b.onclick = () => preguntarVista(b.dataset.vsug));
     q('[data-veroriginal]', b => b.onclick = () => set({ verOriginal: !S.verOriginal }));
@@ -728,7 +739,10 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     q('[data-compartinv]', b => b.onclick = () => { navigator.share({ text: 'Te paso and also: ' + S.admin.nueva.url }).catch(() => {}); });
     q('[data-probar]', b => b.onclick = async () => { const est = document.getElementById('estado'); est.textContent = 'Probando…'; try { await M.probarClave(); est.textContent = 'Funciona.'; } catch (e) { est.textContent = (e && e.mensaje) || 'No funciona.'; } });
     const bg = app.querySelector('[data-close-bg]'); if (bg && !(S.hoja && S.hoja.cargando)) bg.onclick = e => { if (e.target === bg) set({ hoja: null }); };
-    const tin = document.getElementById('tin'); if (tin) tin.oninput = () => { S.entrada.texto = tin.value; };
+    const tin = document.getElementById('tin'); if (tin) {
+      tin.oninput = () => { const antes = !!S.entrada.texto.trim(); S.entrada.texto = tin.value; if (antes !== !!tin.value.trim() && !S.entrada.imagen) { render(); const t = document.getElementById('tin'); t.focus(); t.setSelectionRange(t.value.length, t.value.length); } };
+      tin.onpaste = e => { const f = e.clipboardData && Array.from(e.clipboardData.files || []).find(x => /^image\//.test(x.type)); if (f) { e.preventDefault(); leerImagen(f); } };
+    }
     const chat = document.getElementById('chat'); if (chat) chat.oninput = () => { S.P.paraChat = chat.value.slice(0, 400); const w = document.getElementById('wa-t'); if (w) w.textContent = S.P.paraChat; guardaP(); };
     const fimg = document.getElementById('fimg'); if (fimg) fimg.onchange = () => leerImagen(fimg.files && fimg.files[0]);
     const fin = document.getElementById('fin'); if (fin) fin.onsubmit = e => { e.preventDefault(); empezar(); };
@@ -744,9 +758,25 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     const sh = app.querySelector('.sheet'); if (sh) { const b = sh.querySelector('button'); if (b) b.focus(); }
   }
 
+  // pegar: imagen o texto, lo que haya en el portapapeles
+  async function pegar(b) {
+    try {
+      if (navigator.clipboard && navigator.clipboard.read) {
+        const items = await navigator.clipboard.read();
+        for (const it of items) {
+          const ti = it.types.find(t => t.startsWith('image/'));
+          if (ti) { const blob = await it.getType(ti); leerImagen(new File([blob], 'captura', { type: ti })); return; }
+        }
+        for (const it of items) if (it.types.indexOf('text/plain') >= 0) { const t = await (await it.getType('text/plain')).text(); if (t.trim()) { S.entrada.texto = t; render(); return; } }
+      } else if (navigator.clipboard && navigator.clipboard.readText) {
+        const t = await navigator.clipboard.readText(); if (t.trim()) { S.entrada.texto = t; render(); return; }
+      }
+      b.innerHTML = '<span style="font-size:14px">No hay nada copiado</span>';
+    } catch (e) { const t = document.getElementById('tin'); if (t) t.focus(); b.innerHTML = '<span style="font-size:13px">Mantén pulsada la caja y pega</span>'; }
+  }
   function leerImagen(f) {
     if (!f) return;
-    if (!/^image\/(png|jpeg|gif|webp)$/.test(f.type)) { set({ error: 'Sube la captura como imagen PNG, JPG o WebP.' }); return; }
+    if (!/^image\/(png|jpeg|gif|webp|heic|heif)$/.test(f.type)) { set({ error: 'Sube la captura como imagen PNG, JPG o WebP.' }); return; }
     const img = new Image(), url = URL.createObjectURL(f);
     img.onload = () => {
       // reducir a 1280 px de lado: menos peso para el intermediario y menos gasto
@@ -779,6 +809,7 @@ ${A.stats ? `<table class="stats"><thead><tr><th></th>${A.stats.slice(0, 7).reve
     if (t) { S.entrada.texto = t; history.replaceState(null, '', location.pathname); }
     render();
     // desde la extensión de Chrome: empieza a leer solo si hay acceso
+    if (M.modo() === 'invitado') M.yo().then(y => { S.yo = y; }).catch(() => {});
     if (t && u.get('go') === '1' && (M.modo() === 'invitado' || M.modo() === 'clave')) empezar();
   })();
 })();
